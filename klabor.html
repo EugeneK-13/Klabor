@@ -1715,23 +1715,25 @@ function sortHand(hand, trump) {
 async function dealNewRound(players, teams) {
   const deck = shuffle(createDeck());
   const n = players.length;
+  // 2-3 игрока: 3 + открытая + 3 = 6 карт до торгов, потом прикуп 3
+  //   итого 9 карт на руках
+  // 4 игрока: 3 + 3 = 6 карт до торгов, прикуп 2
+  //   итого 8 карт на руках
+  const extraCards = n === 4 ? 2 : 3; // прикуп после выбора козыря
 
-  // Раздаём по 6 карт (3+3) — правило деберца
-  // При игре вчетвером — по 8 карт (нет прикупа по 3, сразу по 8? нет — по 3+3+2)
-  // Стандарт: 2 игрока → 9 карт, 3 → 9 карт, 4 → 8 карт
-  const firstDeal = n === 4 ? 3 : 3; // первые 3 карты
   const hands = {};
   players.forEach(p => { hands[p.id] = []; });
 
-  // Первая порция — 3 карты каждому по часовой стрелке
   let deckIdx = 0;
+
+  // Первая порция — 3 карты каждому
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < 3; j++) {
       hands[players[i].id].push(deck[deckIdx++]);
     }
   }
 
-  // Открытая карта — потенциальный козырь
+  // Открытая карта — потенциальный козырь (лежит НА ВИДУ, перпендикулярно колоде)
   const openCard = deck[deckIdx++];
 
   // Вторая порция — ещё 3 карты каждому
@@ -1741,28 +1743,31 @@ async function dealNewRound(players, teams) {
     }
   }
 
-  // Determine dealer (rotate by round, победитель сдаёт следующий)
+  // Сохраняем оставшуюся часть колоды для прикупа
+  const remainingDeck = deck.slice(deckIdx);
+
   const snap = await get(roomRef);
   const r = snap.val();
   const round = r.round || 1;
-  // dealerIdx из roomData если есть lastDealer, иначе по раунду
   const dealerIdx = (round - 1) % n;
   const dealer = players[dealerIdx].id;
   const firstBidder = players[(dealerIdx + 1) % n].id;
 
-  // Сортируем карты
+  // Сортируем начальные руки (без козыря)
   players.forEach(p => {
     hands[p.id] = sortHand(hands[p.id], null);
   });
 
   const gs = {
     phase: 'bidding',
-    bidRound: 1, // 1 = масть открытой карты, 2 = любая масть
+    bidRound: 1,
     hands,
+    remainingDeck,   // колода для прикупа
+    extraCards,      // сколько карт в прикупе
     dealer,
     currentPlayer: firstBidder,
     trump: null,
-    openCard,        // открытая карта — предложенный козырь
+    openCard,
     trick: {},
     trickLeader: null,
     tricksTaken: {},
@@ -1770,9 +1775,9 @@ async function dealNewRound(players, teams) {
     combos: {},
     bids: [],
     firstBidder,
-    deckSize: deck.length - deckIdx
+    deckSize: remainingDeck.length
   };
-  players.forEach(p=>{
+  players.forEach(p => {
     gs.tricksTaken[p.id] = 0;
     gs.roundPoints[p.id] = 0;
   });
@@ -1848,12 +1853,13 @@ function handleGameState(r) {
     document.getElementById('trump-suit-icon').className   = 'trump-suit';
   }
 
-  // Round scores — всегда показываем числа
+  // Round scores
   if (r.teams) {
-    const ts1 = getTeamPoints(r,'t1');
-    const ts2 = getTeamPoints(r,'t2');
-    document.getElementById('rs1').textContent = typeof ts1==='number' ? ts1 : 0;
-    document.getElementById('rs2').textContent = typeof ts2==='number' ? ts2 : 0;
+    const tkeys = Object.keys(r.teams);
+    const ts1 = tkeys[0] ? getTeamPoints(r, tkeys[0]) : 0;
+    const ts2 = tkeys[1] ? getTeamPoints(r, tkeys[1]) : 0;
+    document.getElementById('rs1').textContent = Number.isFinite(ts1) ? ts1 : 0;
+    document.getElementById('rs2').textContent = Number.isFinite(ts2) ? ts2 : 0;
   }
 
   // Tricks taken
@@ -2068,24 +2074,51 @@ function renderTable(r) {
     slot.appendChild(nm);
   });
 
-  // Показываем открытую карту (потенциальный козырь) во время торгов
-  let openArea = document.getElementById('open-card-area');
+  // Открытая карта — показываем рядом с колодой
+  const deckArea = document.getElementById('deck-area') || document.querySelector('.deck-area');
+  let openCardEl = document.getElementById('open-card-on-deck');
+  let frezaEl = document.getElementById('freza-card');
+
   if (gs.phase === 'bidding' && gs.openCard) {
-    if (!openArea) {
-      openArea = document.createElement('div');
-      openArea.id = 'open-card-area';
-      openArea.innerHTML = '<div class="open-card-label">Предложенный козырь</div>';
-      document.getElementById('table-center').appendChild(openArea);
+    // Создаём элемент открытой карты если нет
+    if (!openCardEl) {
+      openCardEl = document.createElement('div');
+      openCardEl.id = 'open-card-on-deck';
+      openCardEl.style.cssText = 'position:absolute;right:220px;top:50%;transform:translateY(-50%);z-index:20;text-align:center;';
+      const lbl = document.createElement('div');
+      lbl.style.cssText = 'font-size:0.6rem;letter-spacing:2px;color:rgba(201,168,76,0.6);text-transform:uppercase;margin-bottom:4px;';
+      lbl.textContent = 'Козырь?';
+      openCardEl.appendChild(lbl);
+      document.getElementById('game').appendChild(openCardEl);
     }
-    // Убираем старую карту если есть
-    const oldCard = openArea.querySelector('.card');
-    if (oldCard) oldCard.remove();
-    const cardEl = makeCardEl(gs.openCard, true);
-    cardEl.style.margin = '0 auto';
-    openArea.appendChild(cardEl);
-    openArea.style.display = 'block';
-  } else if (openArea) {
-    openArea.style.display = 'none';
+    const oldOC = openCardEl.querySelector('.card');
+    if (oldOC) oldOC.remove();
+    const oc = makeCardEl(gs.openCard, true);
+    oc.style.cssText = 'width:56px;height:84px;box-shadow:0 0 16px rgba(201,168,76,0.6);transform:rotate(90deg);display:inline-block;';
+    openCardEl.appendChild(oc);
+    openCardEl.style.display = 'block';
+    if (frezaEl) frezaEl.style.display = 'none';
+  } else {
+    if (openCardEl) openCardEl.style.display = 'none';
+    // Показываем фрезу если есть (после выбора козыря)
+    if (gs.frezaCard && gs.phase === 'playing') {
+      if (!frezaEl) {
+        frezaEl = document.createElement('div');
+        frezaEl.id = 'freza-card';
+        frezaEl.style.cssText = 'position:absolute;right:220px;top:50%;transform:translateY(-50%);z-index:20;text-align:center;';
+        const lbl2 = document.createElement('div');
+        lbl2.style.cssText = 'font-size:0.6rem;letter-spacing:2px;color:rgba(201,168,76,0.3);text-transform:uppercase;margin-bottom:4px;';
+        lbl2.textContent = 'Фреза';
+        frezaEl.appendChild(lbl2);
+        document.getElementById('game').appendChild(frezaEl);
+      }
+      const oldF = frezaEl.querySelector('.card');
+      if (oldF) oldF.remove();
+      const fc = makeCardEl(gs.frezaCard, true);
+      fc.style.cssText = 'width:56px;height:84px;opacity:0.5;display:inline-block;';
+      frezaEl.appendChild(fc);
+      frezaEl.style.display = 'block';
+    }
   }
 }
 
@@ -2183,33 +2216,58 @@ async function confirmBid() {
   if (!selectedBidSuit || gameState.currentPlayer !== myId) return;
   const players = getOrderedPlayers(roomData);
   const bids = [...(gameState.bids||[]), { player:myId, type:'trump', suit:selectedBidSuit }];
+  const trump = selectedBidSuit;
 
-  // Козырь выбран — сортируем карты с учётом козыря и переходим к игре
-  const sortedHands = {};
+  // Раздаём прикуп — оставшиеся карты из колоды
+  const remainingDeck = [...(gameState.remainingDeck||[])];
+  const extraCards = gameState.extraCards || 3;
+  const handsWithPrikup = {};
+
   Object.entries(gameState.hands||{}).forEach(([pid, hand]) => {
-    sortedHands[pid] = sortHand(hand, selectedBidSuit);
+    handsWithPrikup[pid] = [...hand];
   });
 
-  // Считаем комбинации
-  const combos = calcAllCombos(sortedHands, selectedBidSuit);
+  // Раздаём по extraCards карт каждому
+  let deckPos = 0;
+  for (let i = 0; i < players.length; i++) {
+    for (let j = 0; j < extraCards; j++) {
+      if (deckPos < remainingDeck.length) {
+        handsWithPrikup[players[i].id].push(remainingDeck[deckPos++]);
+      }
+    }
+  }
+
+  // Фреза — последняя карта остатка (информационная, открывается поверх колоды)
+  const frezaCard = remainingDeck[deckPos] || null;
+
+  // Сортируем с учётом козыря
+  const sortedHands = {};
+  Object.entries(handsWithPrikup).forEach(([pid, hand]) => {
+    sortedHands[pid] = sortHand(hand, trump);
+  });
+
+  // Считаем комбинации ПОСЛЕ прикупа
+  const combos = calcAllCombos(sortedHands, trump);
 
   const gs = {
     ...gameState,
-    trump: selectedBidSuit,
+    trump,
     phase: 'playing',
     hands: sortedHands,
+    remainingDeck: remainingDeck.slice(deckPos),
+    frezaCard,
     currentPlayer: gameState.firstBidder,
     trickLeader: gameState.firstBidder,
     bids,
     trick: {},
     combos,
-    bidWinner: myId  // кто назначил козырь
+    bidWinner: myId
   };
 
   selectedBidSuit = null;
   document.querySelectorAll('.suit-btn').forEach(b=>b.classList.remove('selected'));
   await update(roomRef, { gameState: gs });
-  setTimeout(()=>announceCombos(combos, roomData), 500);
+  setTimeout(() => announceCombos(combos, roomData), 500);
 }
 
 async function passBid() {
@@ -2609,8 +2667,8 @@ function updateScoreDisplay(r) {
     const taken = r.gameState.tricksTaken?.[p.id]||0;
     const roundPts = r.gameState.roundPoints?.[p.id]||0;
     const combo = r.gameState.combos?.[p.id];
-    const comboPts = combo ? (typeof combo==='object' ? combo.total||0 : combo) : 0;
-    tricksEl.innerHTML = `Взяток: ${taken} &nbsp;|&nbsp; Очков: ${roundPts}${comboPts?'+'+comboPts:''}`;
+    const comboPts = combo ? (typeof combo==='object' ? (combo.total||0) : Number(combo)||0) : 0;
+    tricksEl.innerHTML = `Взяток: ${taken} &nbsp;|&nbsp; Очков: ${roundPts}${comboPts?'+<b>'+comboPts+'</b>':''}`;
   });
 }
 
