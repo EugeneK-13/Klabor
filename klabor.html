@@ -1330,6 +1330,40 @@ let listeners  = {};
 let selectedCard = null;
 let selectedBidSuit = null;
 
+// Восстанавливаем сессию если была
+function restoreSession() {
+  const savedId   = sessionStorage.getItem('klabor_myId');
+  const savedCode = sessionStorage.getItem('klabor_roomCode');
+  if (savedId && savedCode) {
+    myId      = savedId;
+    roomCode  = savedCode;
+    roomRef   = ref(db, 'rooms/' + savedCode);
+    // Проверяем что комната ещё существует
+    get(roomRef).then(snap => {
+      if (snap.exists()) {
+        const r = snap.val();
+        // Проверяем что мы в этой комнате
+        if (r.players && r.players[myId]) {
+          myName = r.players[myId].name || 'Игрок';
+          hide('main-menu');
+          if (r.status === 'waiting') {
+            show('waiting-room');
+            document.getElementById('room-code-disp').textContent = savedCode;
+          }
+          listenRoom();
+        } else {
+          // Нас нет в комнате — очищаем
+          sessionStorage.removeItem('klabor_myId');
+          sessionStorage.removeItem('klabor_roomCode');
+        }
+      } else {
+        sessionStorage.removeItem('klabor_myId');
+        sessionStorage.removeItem('klabor_roomCode');
+      }
+    });
+  }
+}
+
 // ══════════════════════════════════════════
 //  HELPERS
 // ══════════════════════════════════════════
@@ -1440,6 +1474,9 @@ async function createRoom() {
   if (!DB_CONFIGURED) { alert('Сначала настрой Firebase DB_URL в файле!'); return; }
   roomCode = genCode();
   myId     = genId();
+  // Сохраняем в sessionStorage чтобы не потерять при обновлении
+  sessionStorage.setItem('klabor_myId', myId);
+  sessionStorage.setItem('klabor_roomCode', roomCode);
   roomRef  = ref(db, 'rooms/'+roomCode);
   const modeMaxPlayers = { solo:2, trio:3, team:4 };
   const data = {
@@ -1476,6 +1513,8 @@ async function joinRoom() {
   if (Object.keys(players).length >= r.maxPlayers) return notify('Комната полная', true);
   myId = genId();
   roomCode = code;
+  sessionStorage.setItem('klabor_myId', myId);
+  sessionStorage.setItem('klabor_roomCode', roomCode);
   roomRef  = ref(db,'rooms/'+code);
   const order = Object.keys(players).length;
   await update(ref(db,`rooms/${code}/players/${myId}`), { name: myName, order });
@@ -1529,7 +1568,10 @@ function updateWaitingUI(r) {
   if (needed > 0) info.textContent = `Ожидание ${needed} игрок${needed===1?'а':'ов'}...`;
   else info.textContent = 'Все готовы!';
   const startBtn = document.getElementById('start-btn');
-  if (r.host === myId && players.length >= r.maxPlayers) startBtn.classList.remove('hidden');
+  const isHost = r.host === myId;
+  const enoughPlayers = players.length >= r.maxPlayers;
+  console.log('updateWaitingUI: host=', r.host, 'myId=', myId, 'isHost=', isHost, 'players=', players.length, '/', r.maxPlayers);
+  if (isHost && enoughPlayers) startBtn.classList.remove('hidden');
   else startBtn.classList.add('hidden');
 }
 
@@ -2342,6 +2384,7 @@ document.addEventListener('dblclick', e => {
 // ══════════════════════════════════════════
 function bindEvents() {
   testFirebaseConnection();
+  restoreSession();
   const on = (id, fn) => { const el = document.getElementById(id); if(el) el.addEventListener('click', fn); };
 
   on('btn-show-create',  () => showCreateRoom());
