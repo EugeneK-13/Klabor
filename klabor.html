@@ -539,23 +539,23 @@
   /* ── BID PANEL ── */
   #bid-panel {
     position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
     z-index: 200;
-    backdrop-filter: blur(4px);
+    pointer-events: all;
   }
 
   .bid-box {
-    background: linear-gradient(160deg, #1a3a28 0%, #0d2018 100%);
-    border: 1px solid rgba(201,168,76,0.4);
-    border-radius: 16px;
-    padding: 36px 44px;
-    min-width: 360px;
+    background: linear-gradient(160deg, rgba(15,35,22,0.97) 0%, rgba(8,20,14,0.97) 100%);
+    border: 1px solid rgba(201,168,76,0.5);
+    border-bottom: none;
+    border-radius: 16px 16px 0 0;
+    padding: 16px 32px 20px;
+    min-width: 480px;
+    max-width: 640px;
     text-align: center;
-    box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+    box-shadow: 0 -8px 32px rgba(0,0,0,0.5);
   }
 
   .bid-title {
@@ -1001,7 +1001,8 @@
       </div>
     </div>
     <div class="divider"></div>
-    <button class="btn-primary" id="btn-create-room">Создать игру</button>
+    <button class="btn-primary" id="btn-create-room">Создать игру (онлайн)</button>
+    <button class="btn-primary" id="btn-play-with-bot" style="background:linear-gradient(135deg,#2a5c8a,#1a3a5c);margin-top:8px">🤖 Играть с ботом (офлайн)</button>
     <button class="btn-secondary" id="btn-back-join">← Назад</button>
   </div>
 
@@ -2084,7 +2085,7 @@ function renderTable(r) {
     if (!openCardEl) {
       openCardEl = document.createElement('div');
       openCardEl.id = 'open-card-on-deck';
-      openCardEl.style.cssText = 'position:absolute;right:220px;top:50%;transform:translateY(-50%);z-index:20;text-align:center;';
+      openCardEl.style.cssText = 'position:absolute;right:175px;top:50%;transform:translateY(-50%);z-index:20;text-align:center;';
       const lbl = document.createElement('div');
       lbl.style.cssText = 'font-size:0.6rem;letter-spacing:2px;color:rgba(201,168,76,0.6);text-transform:uppercase;margin-bottom:4px;';
       lbl.textContent = 'Козырь?';
@@ -2105,7 +2106,7 @@ function renderTable(r) {
       if (!frezaEl) {
         frezaEl = document.createElement('div');
         frezaEl.id = 'freza-card';
-        frezaEl.style.cssText = 'position:absolute;right:220px;top:50%;transform:translateY(-50%);z-index:20;text-align:center;';
+        frezaEl.style.cssText = 'position:absolute;right:175px;top:50%;transform:translateY(-50%);z-index:20;text-align:center;';
         const lbl2 = document.createElement('div');
         lbl2.style.cssText = 'font-size:0.6rem;letter-spacing:2px;color:rgba(201,168,76,0.3);text-transform:uppercase;margin-bottom:4px;';
         lbl2.textContent = 'Фреза';
@@ -2136,8 +2137,16 @@ function handleBidPhase(r) {
   const isObligatory = gs.obligatory; // обяз — дилер обязан выбрать
 
   // Заголовок
-  document.getElementById('bid-title').textContent = bidRound === 1 ? 'ТОРГИ' : 'ВТОРОЙ КРУГ';
-  document.getElementById('bid-subtitle').textContent = bidRound === 2 ? 'Выберите любую масть козырем' : '';
+  const openSuit = openCard ? openCard.suit : null;
+  if (bidRound === 1) {
+    document.getElementById('bid-title').textContent = 'ТОРГИ — КРУГ 1';
+    document.getElementById('bid-subtitle').textContent = openSuit
+      ? `Фреза: ${openCard.rank} ${openCard.suit} — принять эту масть или пас?`
+      : 'Первый круг';
+  } else {
+    document.getElementById('bid-title').textContent = 'ТОРГИ — КРУГ 2';
+    document.getElementById('bid-subtitle').textContent = 'Выберите любую масть козырем';
+  }
 
   // Показываем открытую карту прямо в панели торгов
   let openCardDiv = document.getElementById('bid-open-card');
@@ -2266,12 +2275,46 @@ async function confirmBid() {
 
   selectedBidSuit = null;
   document.querySelectorAll('.suit-btn').forEach(b=>b.classList.remove('selected'));
+
+  if (botMode) {
+    const bids = [...(gameState.bids||[]), { player:myId, type:'trump', suit:trump }];
+    botConfirmTrump(bids, trump);
+    return;
+  }
+
   await update(roomRef, { gameState: gs });
   setTimeout(() => announceCombos(combos, roomData), 500);
 }
 
 async function passBid() {
   if (gameState.currentPlayer !== myId) return;
+  if (botMode) {
+    // В bot режиме — пас от человека
+    const players = Object.entries(botState.players)
+      .sort((a,b) => a[1].order - b[1].order)
+      .map(([id]) => id);
+    const gs = botState.gameState;
+    const n = players.length;
+    const myIdx = players.indexOf(myId);
+    const nextId = players[(myIdx + 1) % n];
+    const bids = [...(gs.bids||[]), { player:myId, type:'pass' }];
+    const passCount = bids.filter(b=>b.type==='pass').length;
+    const bidRound = gs.bidRound || 1;
+    gs.bids = bids;
+    if (bidRound === 1 && passCount >= n) {
+      gs.bidRound = 2;
+      gs.currentPlayer = gs.firstBidder;
+    } else if (bidRound === 2 && passCount >= n * 2 - 1) {
+      gs.currentPlayer = gs.dealer;
+      gs.obligatory = true;
+    } else {
+      gs.currentPlayer = nextId;
+    }
+    gameState = gs;
+    botUpdateUI();
+    if (gs.currentPlayer !== myId) setTimeout(botBid, 800);
+    return;
+  }
   const players = getOrderedPlayers(roomData);
   const n = players.length;
   const myIdx = players.findIndex(p=>p.id===myId);
@@ -2796,6 +2839,369 @@ document.addEventListener('dblclick', e => {
 });
 
 // ══════════════════════════════════════════
+//  BOT LOGIC — игра против бота (офлайн)
+// ══════════════════════════════════════════
+let botMode = false;  // true когда играем с ботом
+let botState = null;  // локальное состояние игры
+
+// Запуск игры с ботом — всё хранится локально без Firebase
+async function startBotGame() {
+  botMode = true;
+  myId = 'human_' + genId();
+  myName = (document.getElementById('player-name').value||'').trim() || 'Игрок';
+  const botId = 'bot_1';
+  const botName = '🤖 Бот';
+
+  const players = [
+    { id: myId, name: myName, order: 0 },
+    { id: botId, name: botName, order: 1 }
+  ];
+
+  // Имитируем структуру roomData
+  botState = {
+    mode: chosenMode,
+    target: chosenPts,
+    maxPlayers: 2,
+    status: 'playing',
+    host: myId,
+    players: {
+      [myId]:  { name: myName,  order: 0 },
+      [botId]: { name: botName, order: 1 }
+    },
+    teams: { t1: [myId], t2: [botId] },
+    teamScores: { t1: 0, t2: 0 },
+    round: 1
+  };
+
+  hide('create-menu');
+  startGameUI(botState);
+  await botDealRound();
+}
+
+async function botDealRound() {
+  const players = Object.entries(botState.players)
+    .sort((a,b) => a[1].order - b[1].order)
+    .map(([id,p]) => ({ id, name: p.name }));
+  const n = players.length;
+  const deck = shuffle(createDeck());
+
+  const hands = {};
+  players.forEach(p => { hands[p.id] = []; });
+
+  let idx = 0;
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < 3; j++) hands[players[i].id].push(deck[idx++]);
+  const openCard = deck[idx++];
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < 3; j++) hands[players[i].id].push(deck[idx++]);
+
+  const remainingDeck = deck.slice(idx);
+  const round = botState.round || 1;
+  const dealerIdx = (round - 1) % n;
+  const dealer = players[dealerIdx].id;
+  const firstBidder = players[(dealerIdx + 1) % n].id;
+
+  players.forEach(p => { hands[p.id] = sortHand(hands[p.id], null); });
+
+  botState.gameState = {
+    phase: 'bidding',
+    bidRound: 1,
+    hands,
+    remainingDeck,
+    extraCards: 3,
+    dealer,
+    currentPlayer: firstBidder,
+    trump: null,
+    openCard,
+    trick: {},
+    trickLeader: null,
+    tricksTaken: Object.fromEntries(players.map(p => [p.id, 0])),
+    roundPoints: Object.fromEntries(players.map(p => [p.id, 0])),
+    combos: {},
+    bids: [],
+    firstBidder,
+    deckSize: remainingDeck.length
+  };
+
+  botUpdateUI();
+  // Если первый ход бота
+  if (firstBidder !== myId) setTimeout(botBid, 1200);
+}
+
+// Бот делает ставку
+function botBid() {
+  if (!botMode || !botState?.gameState) return;
+  const gs = botState.gameState;
+  if (gs.currentPlayer === myId) return; // не наш ход
+  if (gs.phase !== 'bidding') return;
+
+  const botId = Object.keys(botState.players).find(id => id !== myId);
+  const botHand = gs.hands[botId] || [];
+  const openCard = gs.openCard;
+  const bidRound = gs.bidRound || 1;
+
+  // Простая стратегия бота
+  let chosenSuit = null;
+  if (bidRound === 1 && openCard) {
+    // Принять фрезу если есть 2+ карты этой масти или козырной валет
+    const count = botHand.filter(c => c.suit === openCard.suit).length;
+    const hasJack = botHand.some(c => c.suit === openCard.suit && c.rank === 'J');
+    if (count >= 2 || hasJack) chosenSuit = openCard.suit;
+  } else {
+    // Второй круг — выбрать масть с наибольшим количеством карт
+    const suitCounts = {};
+    SUITS.forEach(s => { suitCounts[s] = botHand.filter(c => c.suit === s).length; });
+    chosenSuit = Object.entries(suitCounts).sort((a,b) => b[1]-a[1])[0]?.[0];
+  }
+
+  const players = Object.entries(botState.players)
+    .sort((a,b) => a[1].order - b[1].order)
+    .map(([id]) => id);
+  const myIdx = players.indexOf(botId);
+  const nextId = players[(myIdx + 1) % players.length];
+
+  const bids = [...(gs.bids||[]), {
+    player: botId,
+    type: chosenSuit ? 'trump' : 'pass',
+    suit: chosenSuit || null
+  }];
+
+  if (chosenSuit) {
+    // Бот выбрал козырь → раздаём прикуп и начинаем игру
+    botConfirmTrump(bids, chosenSuit);
+  } else {
+    // Пас
+    const passCount = bids.filter(b => b.type==='pass').length;
+    if (bidRound === 1 && passCount >= players.length) {
+      gs.bids = bids;
+      gs.bidRound = 2;
+      gs.currentPlayer = gs.firstBidder;
+      botUpdateUI();
+      if (gs.currentPlayer !== myId) setTimeout(botBid, 1000);
+    } else if (bidRound === 2) {
+      // Обяз для следующего (если дошли до конца — обяз дилеру)
+      gs.bids = bids;
+      const isOblig = nextId === gs.dealer && passCount >= players.length - 1;
+      gs.currentPlayer = nextId;
+      gs.obligatory = isOblig;
+      botUpdateUI();
+      if (gs.currentPlayer !== myId) setTimeout(botBid, 1000);
+    } else {
+      gs.bids = bids;
+      gs.currentPlayer = nextId;
+      botUpdateUI();
+      if (gs.currentPlayer !== myId) setTimeout(botBid, 1000);
+    }
+  }
+}
+
+function botConfirmTrump(bids, trump) {
+  const gs = botState.gameState;
+  const players = Object.entries(botState.players)
+    .sort((a,b) => a[1].order - b[1].order)
+    .map(([id]) => id);
+
+  // Прикуп
+  const remaining = [...(gs.remainingDeck||[])];
+  const extra = gs.extraCards || 3;
+  const newHands = {};
+  players.forEach(id => { newHands[id] = [...gs.hands[id]]; });
+  let pos = 0;
+  const dealerIdx = players.indexOf(gs.dealer);
+  for (let j = 0; j < extra; j++)
+    for (let i = 0; i < players.length; i++) {
+      const pid = players[(dealerIdx + 1 + i) % players.length];
+      if (pos < remaining.length) newHands[pid].push(remaining[pos++]);
+    }
+
+  players.forEach(id => { newHands[id] = sortHand(newHands[id], trump); });
+  const combos = calcAllCombos(newHands, trump);
+  const frezaCard = remaining[pos] || null;
+
+  Object.assign(gs, {
+    trump,
+    phase: 'playing',
+    hands: newHands,
+    remainingDeck: remaining.slice(pos),
+    frezaCard,
+    currentPlayer: gs.firstBidder,
+    trickLeader: gs.firstBidder,
+    bids,
+    trick: {},
+    combos,
+    bidWinner: gs.currentPlayer,
+    deckSize: remaining.slice(pos).length
+  });
+
+  botUpdateUI();
+  setTimeout(() => announceCombos(combos, botState), 500);
+  if (gs.currentPlayer !== myId) setTimeout(botPlay, 1500);
+}
+
+// Бот делает ход картой
+function botPlay() {
+  if (!botMode || !botState?.gameState) return;
+  const gs = botState.gameState;
+  if (gs.currentPlayer === myId || gs.phase !== 'playing') return;
+
+  const botId = gs.currentPlayer;
+  const hand = gs.hands[botId] || [];
+  if (!hand.length) return;
+
+  // Найти играбельные карты
+  const playable = hand.filter(c => isCardPlayable(c, botState));
+  // Стратегия: если выигрываем взятку — сбросить карту, иначе ходить козырем
+  const trick = gs.trick || {};
+  let card;
+
+  if (Object.keys(trick).length === 0) {
+    // Первый ход — ходим козырем если есть, иначе старшей картой
+    const trumpCards = playable.filter(c => c.suit === gs.trump);
+    card = trumpCards.length
+      ? trumpCards[Math.floor(Math.random() * trumpCards.length)]
+      : playable[playable.length - 1];
+  } else {
+    // Пытаемся побить — ходим минимально достаточной картой
+    card = playable[0];
+  }
+
+  // Применяем ход
+  botApplyPlay(botId, card);
+}
+
+function botApplyPlay(botId, card) {
+  const gs = botState.gameState;
+  const players = Object.entries(botState.players)
+    .sort((a,b) => a[1].order - b[1].order)
+    .map(([id]) => id);
+  const n = players.length;
+
+  // Убираем карту из руки
+  gs.hands[botId] = gs.hands[botId].filter(c => !(c.suit===card.suit && c.rank===card.rank));
+  gs.trick[botId] = card;
+
+  if (Object.keys(gs.trick).length === n) {
+    // Взятка завершена
+    const winner = determineTrickWinner(gs.trick, gs.trump);
+    const pts = Object.values(gs.trick).reduce((s,c) =>
+      s + (c.suit===gs.trump ? TRUMP_PTS[c.rank]||0 : TRICK_PTS[c.rank]||0), 0);
+    gs.roundPoints[winner] = (gs.roundPoints[winner]||0) + pts;
+    gs.tricksTaken[winner] = (gs.tricksTaken[winner]||0) + 1;
+    gs.trick = {};
+    gs.trickLeader = winner;
+    gs.currentPlayer = winner;
+
+    // Проверяем конец раунда
+    const allEmpty = players.every(id => (gs.hands[id]||[]).length === 0);
+    if (allEmpty) {
+      gs.roundPoints[winner] += 10; // последняя взятка
+      gs.phase = 'roundEnd';
+      botUpdateUI();
+      setTimeout(() => botShowRoundEnd(), 800);
+      return;
+    }
+  } else {
+    // Следующий игрок
+    const myIdx = players.indexOf(botId);
+    gs.currentPlayer = players[(myIdx + 1) % n];
+  }
+
+  botUpdateUI();
+  if (gs.currentPlayer !== myId) setTimeout(botPlay, 1000);
+}
+
+// Человек сыграл карту — применяем локально в bot режиме
+function botHumanPlayed(card) {
+  const gs = botState.gameState;
+  gs.hands[myId] = gs.hands[myId].filter(c => !(c.suit===card.suit && c.rank===card.rank));
+  gs.trick[myId] = card;
+
+  const players = Object.entries(botState.players)
+    .sort((a,b) => a[1].order - b[1].order)
+    .map(([id]) => id);
+  const n = players.length;
+
+  if (Object.keys(gs.trick).length === n) {
+    const winner = determineTrickWinner(gs.trick, gs.trump);
+    const pts = Object.values(gs.trick).reduce((s,c) =>
+      s + (c.suit===gs.trump ? TRUMP_PTS[c.rank]||0 : TRICK_PTS[c.rank]||0), 0);
+    gs.roundPoints[winner] = (gs.roundPoints[winner]||0) + pts;
+    gs.tricksTaken[winner] = (gs.tricksTaken[winner]||0) + 1;
+
+    const allEmpty = players.every(id => (gs.hands[id]||[]).length === 0);
+    gs.trick = {};
+    gs.trickLeader = winner;
+    gs.currentPlayer = winner;
+
+    if (allEmpty) {
+      gs.roundPoints[winner] += 10;
+      gs.phase = 'roundEnd';
+      botUpdateUI();
+      setTimeout(() => botShowRoundEnd(), 800);
+      return;
+    }
+  } else {
+    const myIdx = players.indexOf(myId);
+    gs.currentPlayer = players[(myIdx + 1) % n];
+  }
+
+  botUpdateUI();
+  if (gs.currentPlayer !== myId) setTimeout(botPlay, 900);
+}
+
+function botShowRoundEnd() {
+  showRoundEnd(botState);
+  // Обновляем счёт команд
+  const gs = botState.gameState;
+  const teams = botState.teams;
+  Object.entries(teams).forEach(([tk, members]) => {
+    let pts = members.reduce((s, id) => {
+      const combo = gs.combos?.[id];
+      const cPts = typeof combo === 'object' ? (combo.total||0) : (combo||0);
+      return s + (gs.roundPoints?.[id]||0) + cPts;
+    }, 0);
+    botState.teamScores[tk] = (botState.teamScores[tk]||0) + pts;
+  });
+  // Проверяем победу
+  const target = botState.target || 501;
+  const winner = Object.entries(botState.teamScores).find(([,s]) => s >= target);
+  if (winner) {
+    botState.winnerTeam = winner[0];
+    setTimeout(() => showGameOver(botState), 2000);
+  }
+}
+
+// Бот: следующий раунд
+async function botNextRound() {
+  document.getElementById('round-end').style.display = 'none';
+  botState.round = (botState.round||1) + 1;
+  botState.gameState = null;
+  await botDealRound();
+}
+
+// Бот: играть снова
+async function botPlayAgain() {
+  document.getElementById('game-over').style.display = 'none';
+  botState.round = 1;
+  botState.teamScores = { t1: 0, t2: 0 };
+  await botDealRound();
+}
+
+// Синхронизация UI в bot режиме
+function botUpdateUI() {
+  if (!botMode || !botState) return;
+  gameState = botState.gameState;
+  roomData = botState;
+  myHand = gameState?.hands?.[myId] || [];
+
+  if (document.getElementById('game').style.display !== 'block') {
+    startGameUI(botState);
+  }
+
+  handleGameState(botState);
+}
+
+// ══════════════════════════════════════════
 //  EVENT LISTENERS — надёжная привязка
 // ══════════════════════════════════════════
 function bindEvents() {
@@ -2804,6 +3210,7 @@ function bindEvents() {
   const on = (id, fn) => { const el = document.getElementById(id); if(el) el.addEventListener('click', fn); };
 
   on('btn-show-create',  () => showCreateRoom());
+  on('btn-play-with-bot', () => startBotGame());
   on('btn-show-join',    () => showJoinRoom());
   on('btn-create-room',  () => createRoom());
   on('btn-back-create',  () => backToMain());
@@ -2815,8 +3222,8 @@ function bindEvents() {
   on('bid-confirm-btn',  () => confirmBid());
   on('bid-confirm-btn2', () => confirmBid());
   on('bid-pass-btn',     () => passBid());
-  on('btn-next-round',   () => nextRound());
-  on('btn-play-again',   () => playAgain());
+  on('btn-next-round',   () => botMode ? botNextRound() : nextRound());
+  on('btn-play-again',   () => botMode ? botPlayAgain() : playAgain());
   on('btn-back-lobby',   () => backToLobby());
 
   // Delegation for sel-btn (mode/pts) and suit-btn
