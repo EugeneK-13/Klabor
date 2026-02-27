@@ -537,6 +537,7 @@
   }
 
   /* ── BID PANEL ── */
+  /* ── Панель торгов — тонкая полоска снизу ── */
   #bid-panel {
     position: fixed;
     bottom: 0;
@@ -544,70 +545,90 @@
     transform: translateX(-50%);
     z-index: 200;
     pointer-events: all;
+    width: auto;
   }
 
   .bid-box {
-    background: linear-gradient(160deg, rgba(15,35,22,0.97) 0%, rgba(8,20,14,0.97) 100%);
-    border: 1px solid rgba(201,168,76,0.5);
+    background: rgba(10,28,18,0.96);
+    border: 1px solid rgba(201,168,76,0.4);
     border-bottom: none;
-    border-radius: 16px 16px 0 0;
-    padding: 16px 32px 20px;
-    min-width: 480px;
-    max-width: 640px;
+    border-radius: 14px 14px 0 0;
+    padding: 8px 20px 12px;
     text-align: center;
-    box-shadow: 0 -8px 32px rgba(0,0,0,0.5);
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+    /* Горизонтальный layout */
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+    white-space: nowrap;
+  }
+
+  .bid-box-left {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 120px;
   }
 
   .bid-title {
-    font-family: 'Cinzel Decorative', serif;
-    font-size: 1.1rem;
+    font-size: 0.7rem;
     color: var(--gold);
     letter-spacing: 3px;
-    margin-bottom: 6px;
+    text-transform: uppercase;
+    margin-bottom: 2px;
   }
   .bid-subtitle {
-    font-size: 0.85rem;
-    color: rgba(240,216,128,0.4);
-    letter-spacing: 2px;
-    margin-bottom: 28px;
+    font-size: 0.75rem;
+    color: rgba(240,216,128,0.7);
+    letter-spacing: 0;
+    white-space: normal;
+    max-width: 140px;
+    text-align: left;
+  }
+  .bid-who {
+    font-size: 0.75rem;
+    color: rgba(240,216,128,0.5);
+    margin-top: 4px;
+    text-align: left;
   }
 
   .bid-suits {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 10px;
-    margin-bottom: 20px;
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+    margin: 0;
+    align-items: center;
   }
   .suit-btn {
-    padding: 16px 8px;
-    border-radius: 10px;
+    padding: 6px 10px;
+    border-radius: 8px;
     border: 1px solid rgba(255,255,255,0.15);
     background: rgba(255,255,255,0.05);
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
   }
-  .suit-btn .suit-icon { font-size: 2rem; }
-  .suit-btn .suit-name { font-size: 0.65rem; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,0.5); }
-  .suit-btn:hover {
-    background: rgba(201,168,76,0.15);
-    border-color: var(--gold);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-  }
-  .suit-btn.selected {
+  .suit-btn .suit-icon { font-size: 1.2rem; line-height: 1; }
+  .suit-btn .suit-name { font-size: 0.6rem; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,0.5); }
+  .suit-btn:hover:not(.disabled-suit) {
     background: rgba(201,168,76,0.2);
     border-color: var(--gold);
+  }
+  .suit-btn.selected {
+    background: rgba(201,168,76,0.25);
+    border-color: var(--gold);
+    box-shadow: 0 0 8px rgba(201,168,76,0.3);
   }
   .suit-btn .suit-icon.red { color: #e74c3c; }
   .suit-btn .suit-icon.black { color: #ecf0f1; }
 
   .bid-pass-btn {
     width: 100%;
-    padding: 12px;
+    padding: 7px 12px;
     border-radius: 10px;
     border: 1px solid rgba(255,255,255,0.15);
     background: rgba(255,255,255,0.04);
@@ -647,7 +668,7 @@
     cursor: not-allowed;
   }
 
-  .bid-who { font-size: 0.85rem; color: rgba(240,216,128,0.5); margin-bottom: 20px; letter-spacing: 1px; }
+  /* .bid-who handled inline */
 
   .bid-history {
     display: flex;
@@ -1143,30 +1164,25 @@
 <!-- Bid Panel -->
 <div id="bid-panel" class="hidden">
   <div class="bid-box">
-    <div class="bid-title">ТОРГИ</div>
-    <div class="bid-subtitle">выберите козырь</div>
-    <div class="bid-who" id="bid-who-label">Ваш ход</div>
-    <div class="bid-history" id="bid-history"></div>
-    <div class="bid-suits" id="bid-suits">
-      <div class="suit-btn" data-suit="♠">
-        <div class="suit-icon black">♠</div>
-        <div class="suit-name">Пики</div>
-      </div>
-      <div class="suit-btn" data-suit="♥">
-        <div class="suit-icon red">♥</div>
-        <div class="suit-name">Червы</div>
-      </div>
-      <div class="suit-btn" data-suit="♦">
-        <div class="suit-icon red">♦</div>
-        <div class="suit-name">Бубны</div>
-      </div>
-      <div class="suit-btn" data-suit="♣">
-        <div class="suit-icon black">♣</div>
-        <div class="suit-name">Трефы</div>
-      </div>
+    <!-- Левая часть: заголовок и статус -->
+    <div class="bid-box-left">
+      <div class="bid-title" id="bid-title">ТОРГИ</div>
+      <div class="bid-subtitle" id="bid-subtitle"></div>
+      <div class="bid-who" id="bid-who-label">Ваш ход</div>
+      <div class="bid-history" id="bid-history" style="font-size:0.7rem;margin-top:4px;max-width:140px;white-space:normal;text-align:left"></div>
     </div>
-    <button class="bid-confirm-btn" id="bid-confirm-btn" disabled id="bid-confirm-btn2">Объявить козырь</button>
-    <button class="bid-pass-btn" id="bid-pass-btn">Пас</button>
+    <!-- Кнопки мастей -->
+    <div class="bid-suits" id="bid-suits">
+      <div class="suit-btn" data-suit="♠"><div class="suit-icon black">♠</div><div class="suit-name">Пики</div></div>
+      <div class="suit-btn" data-suit="♥"><div class="suit-icon red">♥</div><div class="suit-name">Червы</div></div>
+      <div class="suit-btn" data-suit="♦"><div class="suit-icon red">♦</div><div class="suit-name">Бубны</div></div>
+      <div class="suit-btn" data-suit="♣"><div class="suit-icon black">♣</div><div class="suit-name">Трефы</div></div>
+    </div>
+    <!-- Кнопки действий -->
+    <div style="display:flex;flex-direction:column;gap:6px;min-width:130px">
+      <button class="bid-confirm-btn" id="bid-confirm-btn" disabled>Принять</button>
+      <button class="bid-pass-btn" id="bid-pass-btn">Пас</button>
+    </div>
   </div>
 </div>
 
@@ -2139,39 +2155,18 @@ function handleBidPhase(r) {
   // Заголовок
   const openSuit = openCard ? openCard.suit : null;
   if (bidRound === 1) {
-    document.getElementById('bid-title').textContent = 'ТОРГИ — КРУГ 1';
+    document.getElementById('bid-title').textContent = 'ТОРГИ';
     document.getElementById('bid-subtitle').textContent = openSuit
-      ? `Фреза: ${openCard.rank} ${openCard.suit} — принять эту масть или пас?`
+      ? `Козырь? ${openCard.rank} ${openCard.suit} (${suitName(openCard.suit)})`
       : 'Первый круг';
+    // Кнопка "Принять" вместо "Объявить козырь"
+    const confBtn = document.getElementById('bid-confirm-btn');
+    if (confBtn) confBtn.textContent = openSuit ? `Принять ${openCard.suit}` : 'Объявить';
   } else {
-    document.getElementById('bid-title').textContent = 'ТОРГИ — КРУГ 2';
-    document.getElementById('bid-subtitle').textContent = 'Выберите любую масть козырем';
-  }
-
-  // Показываем открытую карту прямо в панели торгов
-  let openCardDiv = document.getElementById('bid-open-card');
-  if (!openCardDiv) {
-    openCardDiv = document.createElement('div');
-    openCardDiv.id = 'bid-open-card';
-    openCardDiv.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:6px;margin:0 auto 16px;';
-    const labelEl = document.createElement('div');
-    labelEl.style.cssText = 'font-size:0.7rem;letter-spacing:3px;color:rgba(240,216,128,0.5);text-transform:uppercase;';
-    labelEl.textContent = 'Открытая карта — предложенный козырь';
-    openCardDiv.appendChild(labelEl);
-    // Вставляем после bid-subtitle
-    const sub = document.getElementById('bid-subtitle');
-    sub.after(openCardDiv);
-  }
-  // Убираем старую карту
-  const oldOC = openCardDiv.querySelector('.card');
-  if (oldOC) oldOC.remove();
-  if (openCard && bidRound === 1) {
-    openCardDiv.style.display = 'flex';
-    const ocEl = makeCardEl(openCard, true);
-    ocEl.style.cssText = 'width:64px;height:96px;margin:0 auto;box-shadow:0 0 20px rgba(201,168,76,0.5);';
-    openCardDiv.appendChild(ocEl);
-  } else {
-    openCardDiv.style.display = 'none';
+    document.getElementById('bid-title').textContent = 'ТОРГИ — ВТОРОЙ КРУГ';
+    document.getElementById('bid-subtitle').textContent = 'Все спасовали — выберите масть';
+    const confBtn = document.getElementById('bid-confirm-btn');
+    if (confBtn) confBtn.textContent = 'Объявить козырь';
   }
 
   // История ставок
@@ -2210,6 +2205,8 @@ function handleBidPhase(r) {
     document.getElementById('bid-suits').style.pointerEvents='none';
     document.getElementById('bid-confirm-btn').disabled = true;
     document.getElementById('bid-pass-btn').style.display='none';
+    // Запускаем бота если его ход
+    if (botMode) setTimeout(botBid, 900);
   }
 }
 
@@ -2219,6 +2216,11 @@ function selectBidSuit(el) {
   el.classList.add('selected');
   selectedBidSuit = el.dataset.suit;
   document.getElementById('bid-confirm-btn').disabled = false;
+  // В первом круге — обновляем текст кнопки
+  const gs = botMode ? botState?.gameState : gameState;
+  if ((gs?.bidRound||1) === 1) {
+    document.getElementById('bid-confirm-btn').textContent = `Принять ${el.dataset.suit}`;
+  }
 }
 
 async function confirmBid() {
@@ -2277,8 +2279,9 @@ async function confirmBid() {
   document.querySelectorAll('.suit-btn').forEach(b=>b.classList.remove('selected'));
 
   if (botMode) {
-    const bids = [...(gameState.bids||[]), { player:myId, type:'trump', suit:trump }];
-    botConfirmTrump(bids, trump);
+    // В bot режиме обновляем botState напрямую и вызываем botConfirmTrump
+    const bidsList = [...(botState.gameState.bids||[]), { player:myId, type:'trump', suit:trump }];
+    botConfirmTrump(bidsList, trump);
     return;
   }
 
@@ -2580,9 +2583,16 @@ function determineTrickWinner(trick, trump) {
 let _lastNotifiedTurn = null;
 function handlePlayPhase(r) {
   const isMyTurn = r.gameState?.currentPlayer===myId;
-  if (isMyTurn && _lastNotifiedTurn !== r.gameState?.currentPlayer + (r.gameState?.trick ? Object.keys(r.gameState.trick).length : 0)) {
-    _lastNotifiedTurn = r.gameState?.currentPlayer + (r.gameState?.trick ? Object.keys(r.gameState.trick).length : 0);
+  const turnKey = r.gameState?.currentPlayer + Object.keys(r.gameState?.trick||{}).length;
+  if (isMyTurn && _lastNotifiedTurn !== turnKey) {
+    _lastNotifiedTurn = turnKey;
     notify('Ваш ход!');
+  } else if (!isMyTurn && botMode) {
+    // Запускаем бота
+    if (_lastNotifiedTurn !== turnKey) {
+      _lastNotifiedTurn = turnKey;
+      setTimeout(botPlay, 800);
+    }
   }
 }
 
@@ -3199,6 +3209,15 @@ function botUpdateUI() {
   }
 
   handleGameState(botState);
+}
+
+// Вызывается после каждого обновления UI — проверяем нужен ли ход бота
+function botCheckTurn() {
+  if (!botMode || !botState?.gameState) return;
+  const gs = botState.gameState;
+  if (gs.currentPlayer === myId) return;
+  if (gs.phase === 'bidding') setTimeout(botBid, 900);
+  else if (gs.phase === 'playing') setTimeout(botPlay, 800);
 }
 
 // ══════════════════════════════════════════
