@@ -898,11 +898,70 @@
   /* Taken tricks indicator */
   .tricks-taken {
     font-size: 0.7rem;
-    letter-spacing: 2px;
-    color: rgba(201,168,76,0.4);
-    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: rgba(201,168,76,0.5);
     text-align: center;
     margin-top: 2px;
+  }
+
+  /* Combo panel — слева от карт */
+  .combo-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-right: 10px;
+    align-self: flex-end;
+    margin-bottom: 8px;
+  }
+  .combo-chip {
+    background: rgba(201,168,76,0.15);
+    border: 1px solid rgba(201,168,76,0.4);
+    border-radius: 8px;
+    padding: 5px 10px;
+    font-size: 0.75rem;
+    color: var(--gold-light);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .combo-chip:hover {
+    background: rgba(201,168,76,0.3);
+    border-color: var(--gold);
+  }
+  .combo-chip.bella {
+    border-color: rgba(255,100,100,0.5);
+    background: rgba(255,80,80,0.1);
+  }
+  .combo-chip-pts {
+    color: var(--gold);
+    font-weight: 600;
+  }
+
+  /* Открытая карта козырь */
+  #open-card-area {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    z-index: 15;
+    pointer-events: none;
+  }
+  .open-card-label {
+    font-size: 0.65rem;
+    letter-spacing: 3px;
+    color: rgba(201,168,76,0.6);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  /* disabled suit in bid */
+  .suit-btn.disabled-suit {
+    opacity: 0.25 !important;
+    cursor: not-allowed;
   }
 </style>
 </head>
@@ -1638,29 +1697,72 @@ function getTeamOf(playerId, teams) {
   return null;
 }
 
+// Сортировка карт: по масти затем по старшинству
+function sortHand(hand, trump) {
+  const suitOrder = trump
+    ? [trump, ...SUITS.filter(s=>s!==trump)]
+    : SUITS;
+  const rankOrder = ['7','8','9','10','J','Q','K','A'];
+  const trumpRankOrder = ['7','8','Q','K','10','A','9','J'];
+  return [...hand].sort((a,b) => {
+    const si = suitOrder.indexOf(a.suit) - suitOrder.indexOf(b.suit);
+    if (si !== 0) return si;
+    const ro = a.suit === trump ? trumpRankOrder : rankOrder;
+    return ro.indexOf(a.rank) - ro.indexOf(b.rank);
+  });
+}
+
 async function dealNewRound(players, teams) {
   const deck = shuffle(createDeck());
   const n = players.length;
-  const cardsPerPlayer = Math.floor(deck.length / n);
-  const hands = {};
-  players.forEach((p,i) => {
-    hands[p.id] = deck.slice(i*cardsPerPlayer, (i+1)*cardsPerPlayer);
-  });
 
-  // Determine dealer (rotate by round)
+  // Раздаём по 6 карт (3+3) — правило деберца
+  // При игре вчетвером — по 8 карт (нет прикупа по 3, сразу по 8? нет — по 3+3+2)
+  // Стандарт: 2 игрока → 9 карт, 3 → 9 карт, 4 → 8 карт
+  const firstDeal = n === 4 ? 3 : 3; // первые 3 карты
+  const hands = {};
+  players.forEach(p => { hands[p.id] = []; });
+
+  // Первая порция — 3 карты каждому по часовой стрелке
+  let deckIdx = 0;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < 3; j++) {
+      hands[players[i].id].push(deck[deckIdx++]);
+    }
+  }
+
+  // Открытая карта — потенциальный козырь
+  const openCard = deck[deckIdx++];
+
+  // Вторая порция — ещё 3 карты каждому
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < 3; j++) {
+      hands[players[i].id].push(deck[deckIdx++]);
+    }
+  }
+
+  // Determine dealer (rotate by round, победитель сдаёт следующий)
   const snap = await get(roomRef);
   const r = snap.val();
   const round = r.round || 1;
-  const dealerIdx = (round-1) % n;
+  // dealerIdx из roomData если есть lastDealer, иначе по раунду
+  const dealerIdx = (round - 1) % n;
   const dealer = players[dealerIdx].id;
-  const firstBidder = players[(dealerIdx+1)%n].id;
+  const firstBidder = players[(dealerIdx + 1) % n].id;
+
+  // Сортируем карты
+  players.forEach(p => {
+    hands[p.id] = sortHand(hands[p.id], null);
+  });
 
   const gs = {
     phase: 'bidding',
+    bidRound: 1, // 1 = масть открытой карты, 2 = любая масть
     hands,
     dealer,
     currentPlayer: firstBidder,
     trump: null,
+    openCard,        // открытая карта — предложенный козырь
     trick: {},
     trickLeader: null,
     tricksTaken: {},
@@ -1668,7 +1770,7 @@ async function dealNewRound(players, teams) {
     combos: {},
     bids: [],
     firstBidder,
-    deckSize: deck.length - n*cardsPerPlayer
+    deckSize: deck.length - deckIdx
   };
   players.forEach(p=>{
     gs.tricksTaken[p.id] = 0;
@@ -1759,6 +1861,20 @@ function handleGameState(r) {
     const zone = getZoneForPlayer(pid, r);
     const el = document.getElementById('tricks-'+zone);
     if (el) el.textContent = 'Взяток: ' + (gameState.tricksTaken[pid]||0);
+  });
+
+  // Показываем объявленные комбо
+  const declared = gameState.declaredCombos || [];
+  declared.forEach(d => {
+    if (d.player !== myId) {
+      const pname = r.players[d.player]?.name||'?';
+      // Показываем один раз — следим по ID
+      const key = 'shown_'+d.player+d.name;
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, '1');
+        showComboBanner(pname + ': ' + d.name, d.pts, false);
+      }
+    }
   });
 
   // Phase handling
@@ -1853,6 +1969,22 @@ function renderAllHands(r) {
     handEl.innerHTML = '';
 
     if (p.id === myId) {
+      // Комбо-панель слева от карт
+      const combo = gameState.combos?.[myId];
+      if (combo && combo.items && combo.items.length > 0) {
+        const comboPanel = document.createElement('div');
+        comboPanel.className = 'combo-panel';
+        combo.items.forEach(item => {
+          const chip = document.createElement('div');
+          chip.className = 'combo-chip' + (item.isBella ? ' bella' : '');
+          chip.title = 'Нажми чтобы показать сопернику';
+          chip.innerHTML = `<span>${item.name}</span><span class="combo-chip-pts">+${item.pts}</span>`;
+          chip.addEventListener('click', () => declareCombo(item));
+          comboPanel.appendChild(chip);
+        });
+        handEl.parentElement.insertBefore(comboPanel, handEl);
+      }
+
       // Show my cards face-up
       const playable = canIPlay(r);
       myHand.forEach((card, i) => {
@@ -1911,32 +2043,53 @@ function makeCardBack(small=false) {
 }
 
 // ══════════════════════════════════════════
-//  RENDER TABLE (played cards)
+//  RENDER TABLE (played cards + open card)
 // ══════════════════════════════════════════
 function renderTable(r) {
-  const trick = gameState.trick || {};
+  const gs = r.gameState || gameState;
+  const trick = gs.trick || {};
   ['bottom','top','left','right'].forEach(zone => {
     const slot = document.getElementById('slot-'+zone);
-    slot.innerHTML = '';
+    if(slot) slot.innerHTML = '';
   });
   const players = getOrderedPlayers(r);
   Object.entries(trick).forEach(([pid, card]) => {
     const zone = getZoneForPlayer(pid, r);
     const slot = document.getElementById('slot-'+zone);
-    const el   = makeCardEl(card, true);
+    if (!slot) return;
+    const el = makeCardEl(card, true);
     el.style.width = '64px'; el.style.height = '96px';
     slot.appendChild(el);
-    // Player name under card
     const pname = players.find(p=>p.id===pid)?.name||'';
     const nm = document.createElement('div');
     nm.className='slot-name';
     nm.textContent = pname;
     slot.appendChild(nm);
   });
+
+  // Показываем открытую карту (потенциальный козырь) во время торгов
+  let openArea = document.getElementById('open-card-area');
+  if (gs.phase === 'bidding' && gs.openCard) {
+    if (!openArea) {
+      openArea = document.createElement('div');
+      openArea.id = 'open-card-area';
+      openArea.innerHTML = '<div class="open-card-label">Предложенный козырь</div>';
+      document.getElementById('table-center').appendChild(openArea);
+    }
+    // Убираем старую карту если есть
+    const oldCard = openArea.querySelector('.card');
+    if (oldCard) oldCard.remove();
+    const cardEl = makeCardEl(gs.openCard, true);
+    cardEl.style.margin = '0 auto';
+    openArea.appendChild(cardEl);
+    openArea.style.display = 'block';
+  } else if (openArea) {
+    openArea.style.display = 'none';
+  }
 }
 
 // ══════════════════════════════════════════
-//  BIDDING
+//  BIDDING — двухкруговая система
 // ══════════════════════════════════════════
 function handleBidPhase(r) {
   const gs = r.gameState;
@@ -1944,7 +2097,17 @@ function handleBidPhase(r) {
   const bp = document.getElementById('bid-panel');
   bp.classList.remove('hidden');
 
-  // History
+  const openCard = gs.openCard;
+  const bidRound = gs.bidRound || 1;
+  const isObligatory = gs.obligatory; // обяз — дилер обязан выбрать
+
+  // Заголовок
+  document.getElementById('bid-title').textContent = bidRound === 1 ? 'ТОРГИ' : 'ВТОРОЙ КРУГ';
+  document.getElementById('bid-subtitle').textContent = bidRound === 1
+    ? `Открытая карта: ${openCard ? openCard.rank + ' ' + openCard.suit : '?'}`
+    : 'Выберите любую масть козырем';
+
+  // История ставок
   const histEl = document.getElementById('bid-history');
   histEl.innerHTML = (gs.bids||[]).map(b=>{
     const pname = r.players[b.player]?.name||'?';
@@ -1952,63 +2115,75 @@ function handleBidPhase(r) {
     return `<div class="bid-chip bid">${pname}: ${b.suit}</div>`;
   }).join('');
 
+  // Подсветка масти открытой карты в первом круге
+  document.querySelectorAll('.suit-btn').forEach(btn => {
+    btn.classList.remove('disabled-suit');
+    btn.style.opacity = '1';
+    if (bidRound === 1 && openCard && btn.dataset.suit !== openCard.suit) {
+      btn.style.opacity = '0.3';
+      btn.classList.add('disabled-suit');
+    }
+  });
+
   const whoEl = document.getElementById('bid-who-label');
   if (isMyTurn) {
-    whoEl.textContent = 'Ваш ход — выберите козырь';
+    const obligMsg = isObligatory ? ' (ОБЯЗ — нужно выбрать!)' : '';
+    whoEl.textContent = 'Ваш ход' + obligMsg;
     document.getElementById('bid-suits').style.opacity='1';
     document.getElementById('bid-suits').style.pointerEvents='auto';
     document.getElementById('bid-confirm-btn').disabled = !selectedBidSuit;
-    document.querySelector('.bid-pass-btn').style.display='block';
+    // Пас недоступен при обязе
+    document.getElementById('bid-pass-btn').style.display = isObligatory ? 'none' : 'block';
   } else {
     const cpname = r.players[gs.currentPlayer]?.name||'?';
-    whoEl.textContent = cpname + ' делает ставку...';
+    whoEl.textContent = cpname + ' думает...';
     document.getElementById('bid-suits').style.opacity='0.3';
     document.getElementById('bid-suits').style.pointerEvents='none';
     document.getElementById('bid-confirm-btn').disabled = true;
-    document.querySelector('.bid-pass-btn').style.display='none';
+    document.getElementById('bid-pass-btn').style.display='none';
   }
 }
 
 function selectBidSuit(el) {
+  if (el.classList.contains('disabled-suit')) return;
   document.querySelectorAll('.suit-btn').forEach(b=>b.classList.remove('selected'));
   el.classList.add('selected');
   selectedBidSuit = el.dataset.suit;
   document.getElementById('bid-confirm-btn').disabled = false;
-};
+}
 
 async function confirmBid() {
   if (!selectedBidSuit || gameState.currentPlayer !== myId) return;
   const players = getOrderedPlayers(roomData);
-  const n = players.length;
-  const myIdx = players.findIndex(p=>p.id===myId);
-  const nextIdx = (myIdx+1)%n;
-  const nextPlayer = players[nextIdx].id;
-
   const bids = [...(gameState.bids||[]), { player:myId, type:'trump', suit:selectedBidSuit }];
 
-  // Set trump and move to playing phase
+  // Козырь выбран — сортируем карты с учётом козыря и переходим к игре
+  const sortedHands = {};
+  Object.entries(gameState.hands||{}).forEach(([pid, hand]) => {
+    sortedHands[pid] = sortHand(hand, selectedBidSuit);
+  });
+
+  // Считаем комбинации
+  const combos = calcAllCombos(sortedHands, selectedBidSuit);
+
   const gs = {
     ...gameState,
     trump: selectedBidSuit,
     phase: 'playing',
-    currentPlayer: gameState.firstBidder, // first bidder leads
+    hands: sortedHands,
+    currentPlayer: gameState.firstBidder,
     trickLeader: gameState.firstBidder,
     bids,
-    trick: {}
+    trick: {},
+    combos,
+    bidWinner: myId  // кто назначил козырь
   };
-
-  // Calculate combos for all players
-  const combos = calcAllCombos(gs.hands, selectedBidSuit);
-  gs.combos = combos;
 
   selectedBidSuit = null;
   document.querySelectorAll('.suit-btn').forEach(b=>b.classList.remove('selected'));
-
   await update(roomRef, { gameState: gs });
-
-  // Announce combos
-  setTimeout(()=>announceCombos(combos, roomData), 300);
-};
+  setTimeout(()=>announceCombos(combos, roomData), 500);
+}
 
 async function passBid() {
   if (gameState.currentPlayer !== myId) return;
@@ -2016,69 +2191,150 @@ async function passBid() {
   const n = players.length;
   const myIdx = players.findIndex(p=>p.id===myId);
   const nextIdx = (myIdx+1)%n;
+  const gs = gameState;
+  const bidRound = gs.bidRound || 1;
 
-  const bids = [...(gameState.bids||[]), { player:myId, type:'pass' }];
-  // Count passes
-  const passes = bids.filter(b=>b.type==='pass').length;
-  if (passes >= n-1) {
-    // Everyone passed except one, that one must pick
-    // Find who hasn't passed
-    const passers = new Set(bids.filter(b=>b.type==='pass').map(b=>b.player));
-    const picker  = players.find(p=>!passers.has(p.id))?.id || players[0].id;
-    await update(roomRef, { 'gameState/bids':bids, 'gameState/currentPlayer':picker });
+  const bids = [...(gs.bids||[]), { player:myId, type:'pass' }];
+
+  // Пасы в текущем круге
+  const passesThisRound = bids.filter(b=>b.type==='pass').length;
+
+  if (bidRound === 1) {
+    // Первый круг: масть открытой карты
+    if (passesThisRound >= n) {
+      // Все спасовали в 1м круге → второй круг, начинает тот же firstBidder
+      await update(roomRef, {
+        'gameState/bids': bids,
+        'gameState/bidRound': 2,
+        'gameState/currentPlayer': gs.firstBidder
+      });
+    } else {
+      await update(roomRef, {
+        'gameState/bids': bids,
+        'gameState/currentPlayer': players[nextIdx].id
+      });
+    }
   } else {
-    await update(roomRef, { 'gameState/bids':bids, 'gameState/currentPlayer':players[nextIdx].id });
+    // Второй круг: любая масть
+    // Проверяем не дошли ли до дилера (обяз)
+    const passesInRound2 = bids.filter((b,i) => {
+      // Считаем пасы после начала второго круга
+      const round1passes = gs.bids.filter(b=>b.type==='pass').length;
+      return i >= round1passes && b.type==='pass';
+    }).length;
+
+    if (players[nextIdx].id === gs.dealer || passesInRound2 >= n) {
+      // Следующий — дилер → обяз
+      await update(roomRef, {
+        'gameState/bids': bids,
+        'gameState/currentPlayer': gs.dealer,
+        'gameState/obligatory': true
+      });
+    } else if (passesInRound2 >= n - 1) {
+      // Все спасовали во втором круге → обяз для дилера
+      await update(roomRef, {
+        'gameState/bids': bids,
+        'gameState/currentPlayer': gs.dealer,
+        'gameState/obligatory': true
+      });
+    } else {
+      await update(roomRef, {
+        'gameState/bids': bids,
+        'gameState/currentPlayer': players[nextIdx].id
+      });
+    }
   }
-};
+}
 
 // ══════════════════════════════════════════
-//  COMBOS (Sequences & Marriages)
+//  COMBOS — терц/кварт/квинт + белла
 // ══════════════════════════════════════════
+const RANK_ORDER = ['7','8','9','10','J','Q','K','A'];
+
 function calcAllCombos(hands, trump) {
   const combos = {};
   Object.entries(hands||{}).forEach(([pid, hand]) => {
-    combos[pid] = calcCombos(hand, trump);
+    combos[pid] = calcCombosDetail(hand, trump);
   });
   return combos;
 }
 
-function calcCombos(hand, trump) {
+// Возвращает объект: { total, items: [{name, pts, cards}] }
+function calcCombosDetail(hand, trump) {
+  const items = [];
   let total = 0;
 
-  // Check sequences per suit
+  // Последовательности (терц=3, кварт=4, квинт=5...)
   SUITS.forEach(suit => {
-    const ranks = hand.filter(c=>c.suit===suit).map(c=>c.rank);
-    const order = ['7','8','9','10','J','Q','K','A'];
-    const indices = ranks.map(r=>order.indexOf(r)).sort((a,b)=>a-b);
-    // Find sequences
-    let maxSeq = 1, curSeq = 1;
-    for(let i=1;i<indices.length;i++) {
-      if(indices[i]===indices[i-1]+1) { curSeq++; maxSeq=Math.max(maxSeq,curSeq); }
-      else curSeq=1;
+    const inSuit = hand.filter(c=>c.suit===suit);
+    const indices = inSuit.map(c=>RANK_ORDER.indexOf(c.rank)).sort((a,b)=>a-b);
+    // Найти все последовательности
+    let start = 0;
+    while (start < indices.length) {
+      let len = 1;
+      while (start+len < indices.length && indices[start+len] === indices[start+len-1]+1) len++;
+      if (len >= 3) {
+        const pts = SEQ_PTS[len] || (len >= 5 ? 100 + (len-5)*50 : 0);
+        const seqCards = inSuit.filter(c => {
+          const idx = RANK_ORDER.indexOf(c.rank);
+          return idx >= indices[start] && idx <= indices[start+len-1];
+        });
+        const names = {3:'Терц',4:'Кварт',5:'Квинт',6:'Секст',7:'Септ',8:'Все карты!'};
+        items.push({ name: names[len]||`${len} подряд`, pts, cards: seqCards, suit });
+        total += pts;
+      }
+      start += len;
     }
-    if(maxSeq>=3) total += SEQ_PTS[maxSeq]||0;
   });
 
-  // Marriages (K+Q of same suit)
-  SUITS.forEach(suit => {
+  // Белла = К + Д козыря (20 очков при объявлении + 20 за взятку когда играется вторая)
+  const hasKingTrump  = hand.some(c=>c.suit===trump&&c.rank==='K');
+  const hasQueenTrump = hand.some(c=>c.suit===trump&&c.rank==='Q');
+  if (hasKingTrump && hasQueenTrump) {
+    items.push({ name:'Белла (К+Д козыря)', pts: MARRIAGE_PTS.trump, cards:[], suit:trump, isBella:true });
+    total += MARRIAGE_PTS.trump;
+  }
+
+  // Марьяж некозырный К+Д
+  SUITS.filter(s=>s!==trump).forEach(suit => {
     const hasK = hand.some(c=>c.suit===suit&&c.rank==='K');
     const hasQ = hand.some(c=>c.suit===suit&&c.rank==='Q');
-    if(hasK&&hasQ) {
-      total += suit===trump ? MARRIAGE_PTS.trump : MARRIAGE_PTS.nonTrump;
+    if (hasK && hasQ) {
+      items.push({ name:`Марьяж ${suit}`, pts: MARRIAGE_PTS.nonTrump, cards:[], suit, isBella:false });
+      total += MARRIAGE_PTS.nonTrump;
     }
   });
 
-  return total;
+  return { total, items };
+}
+
+// Упрощённая версия для обратной совместимости
+function calcCombos(hand, trump) {
+  return calcCombosDetail(hand, trump).total;
 }
 
 function announceCombos(combos, r) {
-  Object.entries(combos).forEach(([pid,pts]) => {
+  Object.entries(combos).forEach(([pid, combo]) => {
+    const pts = typeof combo === 'object' ? combo.total : combo;
     if (pts > 0) {
       const pname = r.players[pid]?.name||'?';
       const isMine = pid===myId;
-      showComboBanner(pname + ': ' + pts + ' бонусных очков!', pts, isMine);
+      const details = typeof combo === 'object'
+        ? combo.items.map(i=>i.name+' +'+i.pts).join(', ')
+        : '';
+      showComboBanner(pname + (isMine?' (Вы)':''), pts, isMine, details);
     }
   });
+}
+
+// Объявить комбинацию сопернику
+async function declareCombo(item) {
+  if (!gameState || gameState.phase !== 'playing') return;
+  // Сохраняем объявленную комбо в Firebase чтобы все увидели
+  const declared = gameState.declaredCombos || [];
+  declared.push({ player: myId, name: item.name, pts: item.pts, suit: item.suit });
+  await update(roomRef, { 'gameState/declaredCombos': declared });
+  notify(`Вы объявили: ${item.name} (+${item.pts})`);
 }
 
 // ══════════════════════════════════════════
@@ -2193,9 +2449,13 @@ function determineTrickWinner(trick, trump) {
   return best;
 }
 
+let _lastNotifiedTurn = null;
 function handlePlayPhase(r) {
   const isMyTurn = r.gameState?.currentPlayer===myId;
-  if (isMyTurn) notify('Ваш ход!');
+  if (isMyTurn && _lastNotifiedTurn !== r.gameState?.currentPlayer + (r.gameState?.trick ? Object.keys(r.gameState.trick).length : 0)) {
+    _lastNotifiedTurn = r.gameState?.currentPlayer + (r.gameState?.trick ? Object.keys(r.gameState.trick).length : 0);
+    notify('Ваш ход!');
+  }
 }
 
 // ══════════════════════════════════════════
@@ -2210,7 +2470,9 @@ function showRoundEnd(r) {
   const teamPts = {};
   Object.entries(teams).forEach(([tk, members])=>{
     let pts = members.reduce((s,id)=>{
-      return s + (gs.roundPoints?.[id]||0) + (gs.combos?.[id]||0);
+      const combo = gs.combos?.[id];
+      const comboPts = typeof combo === 'object' ? (combo.total||0) : (combo||0);
+      return s + (gs.roundPoints?.[id]||0) + comboPts;
     },0);
     teamPts[tk] = pts;
   });
@@ -2237,8 +2499,12 @@ function showRoundEnd(r) {
 
   const t1tricks = t1members.reduce((s,id)=>s+(gs.roundPoints?.[id]||0),0);
   const t2tricks = t2members.reduce((s,id)=>s+(gs.roundPoints?.[id]||0),0);
-  const t1combos = t1members.reduce((s,id)=>s+(gs.combos?.[id]||0),0);
-  const t2combos = t2members.reduce((s,id)=>s+(gs.combos?.[id]||0),0);
+  const t1combos = t1members.reduce((s,id)=>{
+    const c=gs.combos?.[id]; return s+(typeof c==='object'?c.total||0:c||0);
+  },0);
+  const t2combos = t2members.reduce((s,id)=>{
+    const c=gs.combos?.[id]; return s+(typeof c==='object'?c.total||0:c||0);
+  },0);
 
   document.getElementById('re-t1n').textContent = t1name;
   document.getElementById('re-t2n').textContent = t2name;
@@ -2263,14 +2529,15 @@ function showRoundEnd(r) {
 
   document.getElementById('round-end').style.display='flex';
 
-  // Save scores if host
-  if (r.host === myId) {
+  // Сохраняем очки (первый кто запишет — победит гонку, Firebase идемпотентен)
+  if (!_scoreUpdateLock) {
+    _scoreUpdateLock = true;
+    setTimeout(() => { _scoreUpdateLock = false; }, 5000);
     update(roomRef, scoreUpdates);
-    // Check game over
     const target = r.target||501;
-    const winner = Object.entries(newTeamScores).find(([,s])=>s>=target);
-    if(winner) {
-      setTimeout(()=>triggerGameOver(winner[0], r, newTeamScores), 3000);
+    const winnerEntry = Object.entries(newTeamScores).find(([,s])=>s>=target);
+    if (winnerEntry) {
+      setTimeout(()=>triggerGameOver(winnerEntry[0], r, newTeamScores), 2000);
     }
   }
 }
@@ -2280,16 +2547,20 @@ async function triggerGameOver(winTeam, r, teamScores) {
 }
 
 async function nextRound() {
-  if (roomData?.host !== myId) {
-    document.getElementById('round-end').style.display='none';
-    return;
-  }
   document.getElementById('round-end').style.display='none';
+  // Только один игрок должен запустить следующий раунд
+  // Используем простую блокировку — кто первый нажал
+  if (_nextRoundLock) return;
+  _nextRoundLock = true;
+  setTimeout(() => { _nextRoundLock = false; }, 3000);
+
   const newRound = (roomData.round||1)+1;
   await update(roomRef, { round:newRound });
   const players = getOrderedPlayers(roomData);
   await dealNewRound(players, roomData.teams);
-};
+}
+let _nextRoundLock = false;
+let _scoreUpdateLock = false;
 
 // ══════════════════════════════════════════
 //  SCORE DISPLAY
@@ -2300,23 +2571,64 @@ function updateScoreDisplay(r) {
   const tkeys = Object.keys(teams);
   document.getElementById('team1-score').textContent = ts[tkeys[0]]||0;
   document.getElementById('team2-score').textContent = ts[tkeys[1]]||0;
+
+  // Обновляем очки рядом с именами игроков на столе
+  if (!r.gameState) return;
+  const players = getOrderedPlayers(r);
+  players.forEach(p => {
+    const zone = getZoneForPlayer(p.id, r);
+    const tricksEl = document.getElementById('tricks-'+zone);
+    if (!tricksEl) return;
+    const taken = r.gameState.tricksTaken?.[p.id]||0;
+    const roundPts = r.gameState.roundPoints?.[p.id]||0;
+    const combo = r.gameState.combos?.[p.id];
+    const comboPts = combo ? (typeof combo==='object' ? combo.total||0 : combo) : 0;
+    tricksEl.innerHTML = `Взяток: ${taken} &nbsp;|&nbsp; Очков: ${roundPts}${comboPts?'+'+comboPts:''}`;
+  });
 }
 
 // ══════════════════════════════════════════
 //  GAME OVER
 // ══════════════════════════════════════════
 function showGameOver(r) {
+  if (document.getElementById('game-over').style.display === 'flex') return;
   const wt = r.winnerTeam;
-  const members = r.teams?.[wt]||[];
+  const teams = r.teams||{};
+  const members = teams[wt]||[];
   const wname = members.map(id=>r.players[id]?.name||'?').join(' & ');
-  document.getElementById('go-title').textContent = '🏆 Победа!';
-  document.getElementById('go-sub').textContent = wname + ' победили!';
+  const isWinner = members.includes(myId);
+
+  document.getElementById('go-title').textContent = isWinner ? '🏆 Победа!' : '💀 Поражение';
+  document.getElementById('go-sub').textContent = wname + (isWinner ? ' — вы победили!' : ' победили');
+
+  // Итоговые очки
+  const ts = r.teamScores||{};
+  const tkeys = Object.keys(teams);
+  const scoreHtml = tkeys.map(tk=>{
+    const mnames = (teams[tk]||[]).map(id=>r.players[id]?.name||'?').join(' & ');
+    return `<div style="display:flex;justify-content:space-between;gap:32px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
+      <span>${mnames}</span><span style="color:var(--gold);font-weight:bold">${ts[tk]||0}</span>
+    </div>`;
+  }).join('');
+
+  // Вставляем итоги в game-over если есть контейнер
+  let scoresDiv = document.getElementById('go-scores');
+  if (!scoresDiv) {
+    scoresDiv = document.createElement('div');
+    scoresDiv.id = 'go-scores';
+    scoresDiv.style.cssText = 'width:100%;max-width:320px;margin:16px auto;font-size:1rem;color:var(--text)';
+    document.querySelector('.game-over-box .game-over-sub').after(scoresDiv);
+  }
+  scoresDiv.innerHTML = scoreHtml;
+
   document.getElementById('game-over').style.display='flex';
 }
 
 async function playAgain() {
   document.getElementById('game-over').style.display='none';
-  if (roomData?.host!==myId) return;
+  if (_playAgainLock) return;
+  _playAgainLock = true;
+  setTimeout(() => { _playAgainLock = false; }, 3000);
   const players = getOrderedPlayers(roomData);
   const teams = buildTeams(players, roomData.mode);
   await update(roomRef, {
@@ -2325,7 +2637,8 @@ async function playAgain() {
     round:1
   });
   await dealNewRound(players, teams);
-};
+}
+let _playAgainLock = false;
 
 function backToLobby() {
   cleanup();
@@ -2345,12 +2658,16 @@ function notify(msg, isError=false, big=false) {
   setTimeout(()=>el.remove(), 3200);
 }
 
-function showComboBanner(text, pts, isMine) {
+function showComboBanner(text, pts, isMine, details='') {
   const el = document.createElement('div');
   el.className = 'combo-banner';
-  el.innerHTML = `<div class="combo-title">${isMine?'🎉 ':' '}${text}</div>`;
+  el.innerHTML = `
+    <div class="combo-title">${isMine?'🎉 ':''}${text}</div>
+    <div class="combo-pts">+${pts} очков</div>
+    ${details ? `<div style="font-size:0.8rem;color:rgba(255,255,255,0.6);margin-top:4px">${details}</div>` : ''}
+  `;
   document.body.appendChild(el);
-  setTimeout(()=>el.remove(), 3200);
+  setTimeout(()=>el.remove(), 3500);
 }
 
 function addLog(msg) {
