@@ -1572,20 +1572,14 @@ function updateWaitingUI(r) {
   if (needed > 0) info.textContent = `Ожидание ${needed} игрок${needed===1?'а':'ов'}...`;
   else info.textContent = 'Все готовы!';
   const startBtn = document.getElementById('start-btn');
-  const isHost = r.host === myId;
   const enoughPlayers = players.length >= r.maxPlayers;
-  console.log('updateWaitingUI: host=', r.host, 'myId=', myId, 'isHost=', isHost, 'players=', players.length, '/', r.maxPlayers);
+  // Кнопку "Начать" показываем ВСЕМ когда игроков достаточно
+  // startGame() внутри проверит кто первым нажал и запустит игру
   if (enoughPlayers) {
     startBtn.classList.remove('hidden');
-    if (isHost) {
-      startBtn.textContent = 'Начать игру!';
-      startBtn.style.opacity = '1';
-      startBtn.style.pointerEvents = 'auto';
-    } else {
-      startBtn.textContent = 'Ждём хоста...';
-      startBtn.style.opacity = '0.5';
-      startBtn.style.pointerEvents = 'none';
-    }
+    startBtn.textContent = 'Начать игру!';
+    startBtn.style.opacity = '1';
+    startBtn.style.pointerEvents = 'auto';
   } else {
     startBtn.classList.add('hidden');
   }
