@@ -1224,33 +1224,36 @@ async function dbDelete(path) {
 }
 
 // LISTEN — Server-Sent Events (реальное время)
+// POLLING вместо SSE — надёжно работает везде
+const POLL_INTERVAL = 1500; // мс между опросами
+
 function dbListen(path, callback) {
-  const url = dbUrl(path);
-  const es  = new EventSource(url);
-  es.addEventListener('put', e => {
-    const msg = JSON.parse(e.data);
-    callback(msg.data);
-  });
-  es.addEventListener('patch', e => {
-    // При patch перечитываем всё
-    dbGet(path).then(data => callback(data));
-  });
-  es.onerror = () => {
-    // Переподключение через 3с при ошибке
-    es.close();
-    setTimeout(() => {
-      const newEs = dbListen(path, callback);
-      _sseMap.set(path, newEs);
-    }, 3000);
-  };
-  _sseMap.set(path, es);
-  return es;
+  let lastJson = null;
+  let stopped  = false;
+
+  async function poll() {
+    if (stopped) return;
+    try {
+      const data = await dbGet(path);
+      const json = JSON.stringify(data);
+      if (json !== lastJson) {
+        lastJson = json;
+        callback(data);
+      }
+    } catch(e) { /* молча игнорируем сетевые ошибки */ }
+    if (!stopped) setTimeout(poll, POLL_INTERVAL);
+  }
+
+  poll(); // сразу первый запрос
+  const handle = { stop: () => { stopped = true; } };
+  _sseMap.set(path, handle);
+  return handle;
 }
 
 // UNLISTEN
 function dbUnlisten(path) {
-  const es = _sseMap.get(path);
-  if (es) { es.close(); _sseMap.delete(path); }
+  const handle = _sseMap.get(path);
+  if (handle) { handle.stop(); _sseMap.delete(path); }
 }
 
 // ── Совместимые обёртки (остальной код не меняем) ──
@@ -1558,6 +1561,7 @@ function listenRoom() {
 }
 
 function updateWaitingUI(r) {
+  if (!r || !r.host || !r.maxPlayers) return;
   const players = Object.values(r.players||{}).sort((a,b)=>a.order-b.order);
   const list = document.getElementById('waiting-players-list');
   list.innerHTML = players.map(p =>
@@ -1571,14 +1575,30 @@ function updateWaitingUI(r) {
   const isHost = r.host === myId;
   const enoughPlayers = players.length >= r.maxPlayers;
   console.log('updateWaitingUI: host=', r.host, 'myId=', myId, 'isHost=', isHost, 'players=', players.length, '/', r.maxPlayers);
-  if (isHost && enoughPlayers) startBtn.classList.remove('hidden');
-  else startBtn.classList.add('hidden');
+  if (enoughPlayers) {
+    startBtn.classList.remove('hidden');
+    if (isHost) {
+      startBtn.textContent = 'Начать игру!';
+      startBtn.style.opacity = '1';
+      startBtn.style.pointerEvents = 'auto';
+    } else {
+      startBtn.textContent = 'Ждём хоста...';
+      startBtn.style.opacity = '0.5';
+      startBtn.style.pointerEvents = 'none';
+    }
+  } else {
+    startBtn.classList.add('hidden');
+  }
 }
 
 // ══════════════════════════════════════════
 //  GAME START
 // ══════════════════════════════════════════
 async function startGame() {
+  if (roomData && roomData.host !== myId) {
+    notify('Только создатель комнаты может начать игру');
+    return;
+  }
   const players = Object.entries(roomData.players||{})
     .sort((a,b)=>a[1].order-b[1].order)
     .map(([id,p])=>({id, name:p.name}));
