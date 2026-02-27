@@ -540,7 +540,7 @@
   /* ── Панель торгов — тонкая полоска снизу ── */
   #bid-panel {
     position: fixed;
-    bottom: 0;
+    bottom: 155px;   /* выше карт игрока */
     left: 50%;
     transform: translateX(-50%);
     z-index: 200;
@@ -556,6 +556,8 @@
     padding: 8px 20px 12px;
     text-align: center;
     box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+    position: relative;
+    z-index: 201;
     /* Горизонтальный layout */
     display: flex;
     flex-direction: row;
@@ -2177,15 +2179,28 @@ function handleBidPhase(r) {
     return `<div class="bid-chip bid">${pname}: ${b.suit}</div>`;
   }).join('');
 
-  // Подсветка масти открытой карты в первом круге
+  // Первый круг: масть фрезы автоматически подсвечена и выбрана
   document.querySelectorAll('.suit-btn').forEach(btn => {
-    btn.classList.remove('disabled-suit');
+    btn.classList.remove('disabled-suit', 'selected');
     btn.style.opacity = '1';
-    if (bidRound === 1 && openCard && btn.dataset.suit !== openCard.suit) {
-      btn.style.opacity = '0.3';
-      btn.classList.add('disabled-suit');
+    if (bidRound === 1 && openCard) {
+      if (btn.dataset.suit !== openCard.suit) {
+        btn.style.opacity = '0.25';
+        btn.classList.add('disabled-suit');
+      } else {
+        // Автоматически "выбираем" масть фрезы
+        btn.classList.add('selected');
+        if (!selectedBidSuit) {
+          selectedBidSuit = openCard.suit;
+        }
+      }
     }
   });
+  // В первом круге кнопка "Принять" сразу активна
+  if (bidRound === 1 && openCard && isMyTurn) {
+    selectedBidSuit = openCard.suit;
+    document.getElementById('bid-confirm-btn').disabled = false;
+  }
 
   const whoEl = document.getElementById('bid-who-label');
   if (isMyTurn) {
@@ -2942,33 +2957,37 @@ async function botDealRound() {
 function botBid() {
   if (!botMode || !botState?.gameState) return;
   const gs = botState.gameState;
-  if (gs.currentPlayer === myId) return; // не наш ход
+  if (gs.currentPlayer === myId) return;
   if (gs.phase !== 'bidding') return;
 
-  const botId = Object.keys(botState.players).find(id => id !== myId);
+  const botId = gs.currentPlayer; // текущий игрок (может быть бот)
+  if (botId === myId) return;
+
   const botHand = gs.hands[botId] || [];
   const openCard = gs.openCard;
   const bidRound = gs.bidRound || 1;
 
-  // Простая стратегия бота
+  const players = Object.entries(botState.players)
+    .sort((a,b) => a[1].order - b[1].order)
+    .map(([id]) => id);
+  const botIdx = players.indexOf(botId);
+  const nextId = players[(botIdx + 1) % players.length];
+
+  // Стратегия бота
   let chosenSuit = null;
   if (bidRound === 1 && openCard) {
-    // Принять фрезу если есть 2+ карты этой масти или козырной валет
     const count = botHand.filter(c => c.suit === openCard.suit).length;
     const hasJack = botHand.some(c => c.suit === openCard.suit && c.rank === 'J');
     if (count >= 2 || hasJack) chosenSuit = openCard.suit;
   } else {
-    // Второй круг — выбрать масть с наибольшим количеством карт
-    const suitCounts = {};
-    SUITS.forEach(s => { suitCounts[s] = botHand.filter(c => c.suit === s).length; });
-    chosenSuit = Object.entries(suitCounts).sort((a,b) => b[1]-a[1])[0]?.[0];
+    // Второй круг — выбрать лучшую масть
+    let best = null, bestCount = 0;
+    SUITS.forEach(s => {
+      const cnt = botHand.filter(c => c.suit === s).length;
+      if (cnt > bestCount) { bestCount = cnt; best = s; }
+    });
+    chosenSuit = best || SUITS[0]; // обяз — обязан выбрать
   }
-
-  const players = Object.entries(botState.players)
-    .sort((a,b) => a[1].order - b[1].order)
-    .map(([id]) => id);
-  const myIdx = players.indexOf(botId);
-  const nextId = players[(myIdx + 1) % players.length];
 
   const bids = [...(gs.bids||[]), {
     player: botId,
@@ -2977,31 +2996,28 @@ function botBid() {
   }];
 
   if (chosenSuit) {
-    // Бот выбрал козырь → раздаём прикуп и начинаем игру
     botConfirmTrump(bids, chosenSuit);
+    return;
+  }
+
+  // Пас бота
+  gs.bids = bids;
+  const passCount = bids.filter(b => b.type === 'pass').length;
+
+  if (bidRound === 1 && passCount >= players.length) {
+    gs.bidRound = 2;
+    gs.currentPlayer = gs.firstBidder;
+  } else if (bidRound === 2 && passCount >= players.length * 2 - 1) {
+    gs.currentPlayer = gs.dealer;
+    gs.obligatory = true;
   } else {
-    // Пас
-    const passCount = bids.filter(b => b.type==='pass').length;
-    if (bidRound === 1 && passCount >= players.length) {
-      gs.bids = bids;
-      gs.bidRound = 2;
-      gs.currentPlayer = gs.firstBidder;
-      botUpdateUI();
-      if (gs.currentPlayer !== myId) setTimeout(botBid, 1000);
-    } else if (bidRound === 2) {
-      // Обяз для следующего (если дошли до конца — обяз дилеру)
-      gs.bids = bids;
-      const isOblig = nextId === gs.dealer && passCount >= players.length - 1;
-      gs.currentPlayer = nextId;
-      gs.obligatory = isOblig;
-      botUpdateUI();
-      if (gs.currentPlayer !== myId) setTimeout(botBid, 1000);
-    } else {
-      gs.bids = bids;
-      gs.currentPlayer = nextId;
-      botUpdateUI();
-      if (gs.currentPlayer !== myId) setTimeout(botBid, 1000);
-    }
+    gs.currentPlayer = nextId;
+  }
+
+  gameState = gs;
+  botUpdateUI();
+  if (gs.currentPlayer !== myId) {
+    setTimeout(botBid, 900);
   }
 }
 
@@ -3055,27 +3071,30 @@ function botPlay() {
   if (gs.currentPlayer === myId || gs.phase !== 'playing') return;
 
   const botId = gs.currentPlayer;
-  const hand = gs.hands[botId] || [];
+  const hand = [...(gs.hands[botId] || [])];
   if (!hand.length) return;
 
   // Найти играбельные карты
   const playable = hand.filter(c => isCardPlayable(c, botState));
-  // Стратегия: если выигрываем взятку — сбросить карту, иначе ходить козырем
+  if (!playable.length) {
+    console.warn('Bot has no playable cards!', hand, gs.trump);
+    return;
+  }
+
   const trick = gs.trick || {};
   let card;
 
   if (Object.keys(trick).length === 0) {
-    // Первый ход — ходим козырем если есть, иначе старшей картой
+    // Первый ход — предпочитаем козырей с валетом или старших
     const trumpCards = playable.filter(c => c.suit === gs.trump);
-    card = trumpCards.length
-      ? trumpCards[Math.floor(Math.random() * trumpCards.length)]
-      : playable[playable.length - 1];
+    card = trumpCards.length ? trumpCards[trumpCards.length - 1] : playable[playable.length - 1];
   } else {
-    // Пытаемся побить — ходим минимально достаточной картой
-    card = playable[0];
+    // Есть карты в взятке — пробуем побить
+    const ledSuit = Object.values(trick)[0]?.suit;
+    const suitCards = playable.filter(c => c.suit === ledSuit);
+    card = suitCards.length ? suitCards[suitCards.length - 1] : playable[0];
   }
 
-  // Применяем ход
   botApplyPlay(botId, card);
 }
 
@@ -3086,77 +3105,84 @@ function botApplyPlay(botId, card) {
     .map(([id]) => id);
   const n = players.length;
 
-  // Убираем карту из руки
   gs.hands[botId] = gs.hands[botId].filter(c => !(c.suit===card.suit && c.rank===card.rank));
-  gs.trick[botId] = card;
+  gs.trick = { ...(gs.trick||{}), [botId]: card };
+
+  botUpdateUI(); // показываем карту на столе
 
   if (Object.keys(gs.trick).length === n) {
-    // Взятка завершена
-    const winner = determineTrickWinner(gs.trick, gs.trump);
-    const pts = Object.values(gs.trick).reduce((s,c) =>
-      s + (c.suit===gs.trump ? TRUMP_PTS[c.rank]||0 : TRICK_PTS[c.rank]||0), 0);
-    gs.roundPoints[winner] = (gs.roundPoints[winner]||0) + pts;
-    gs.tricksTaken[winner] = (gs.tricksTaken[winner]||0) + 1;
-    gs.trick = {};
-    gs.trickLeader = winner;
-    gs.currentPlayer = winner;
+    // Пауза перед подбором взятки
+    setTimeout(() => {
+      const winner = determineTrickWinner(gs.trick, gs.trump);
+      const pts = Object.values(gs.trick).reduce((s,c) =>
+        s + (c.suit===gs.trump ? TRUMP_PTS[c.rank]||0 : TRICK_PTS[c.rank]||0), 0);
+      gs.roundPoints[winner] = (gs.roundPoints[winner]||0) + pts;
+      gs.tricksTaken[winner] = (gs.tricksTaken[winner]||0) + 1;
+      gs.trick = {};
+      gs.trickLeader = winner;
+      gs.currentPlayer = winner;
 
-    // Проверяем конец раунда
-    const allEmpty = players.every(id => (gs.hands[id]||[]).length === 0);
-    if (allEmpty) {
-      gs.roundPoints[winner] += 10; // последняя взятка
-      gs.phase = 'roundEnd';
+      const allEmpty = players.every(id => (gs.hands[id]||[]).length === 0);
+      if (allEmpty) {
+        gs.roundPoints[winner] = (gs.roundPoints[winner]||0) + 10;
+        gs.phase = 'roundEnd';
+        botUpdateUI();
+        setTimeout(() => botShowRoundEnd(), 1000);
+        return;
+      }
       botUpdateUI();
-      setTimeout(() => botShowRoundEnd(), 800);
-      return;
-    }
+      if (gs.currentPlayer !== myId) setTimeout(botPlay, 900);
+    }, 700);
   } else {
-    // Следующий игрок
     const myIdx = players.indexOf(botId);
     gs.currentPlayer = players[(myIdx + 1) % n];
+    botUpdateUI();
+    if (gs.currentPlayer !== myId) setTimeout(botPlay, 900);
   }
-
-  botUpdateUI();
-  if (gs.currentPlayer !== myId) setTimeout(botPlay, 1000);
 }
 
 // Человек сыграл карту — применяем локально в bot режиме
 function botHumanPlayed(card) {
   const gs = botState.gameState;
   gs.hands[myId] = gs.hands[myId].filter(c => !(c.suit===card.suit && c.rank===card.rank));
-  gs.trick[myId] = card;
+  gs.trick = { ...(gs.trick||{}), [myId]: card };
+  gameState = gs;
 
   const players = Object.entries(botState.players)
     .sort((a,b) => a[1].order - b[1].order)
     .map(([id]) => id);
   const n = players.length;
 
+  botUpdateUI(); // показываем карту на столе
+
   if (Object.keys(gs.trick).length === n) {
-    const winner = determineTrickWinner(gs.trick, gs.trump);
-    const pts = Object.values(gs.trick).reduce((s,c) =>
-      s + (c.suit===gs.trump ? TRUMP_PTS[c.rank]||0 : TRICK_PTS[c.rank]||0), 0);
-    gs.roundPoints[winner] = (gs.roundPoints[winner]||0) + pts;
-    gs.tricksTaken[winner] = (gs.tricksTaken[winner]||0) + 1;
+    setTimeout(() => {
+      const winner = determineTrickWinner(gs.trick, gs.trump);
+      const pts = Object.values(gs.trick).reduce((s,c) =>
+        s + (c.suit===gs.trump ? TRUMP_PTS[c.rank]||0 : TRICK_PTS[c.rank]||0), 0);
+      gs.roundPoints[winner] = (gs.roundPoints[winner]||0) + pts;
+      gs.tricksTaken[winner] = (gs.tricksTaken[winner]||0) + 1;
+      const allEmpty = players.every(id => (gs.hands[id]||[]).length === 0);
+      gs.trick = {};
+      gs.trickLeader = winner;
+      gs.currentPlayer = winner;
 
-    const allEmpty = players.every(id => (gs.hands[id]||[]).length === 0);
-    gs.trick = {};
-    gs.trickLeader = winner;
-    gs.currentPlayer = winner;
-
-    if (allEmpty) {
-      gs.roundPoints[winner] += 10;
-      gs.phase = 'roundEnd';
+      if (allEmpty) {
+        gs.roundPoints[winner] = (gs.roundPoints[winner]||0) + 10;
+        gs.phase = 'roundEnd';
+        botUpdateUI();
+        setTimeout(() => botShowRoundEnd(), 1000);
+        return;
+      }
       botUpdateUI();
-      setTimeout(() => botShowRoundEnd(), 800);
-      return;
-    }
+      if (gs.currentPlayer !== myId) setTimeout(botPlay, 900);
+    }, 700);
   } else {
     const myIdx = players.indexOf(myId);
     gs.currentPlayer = players[(myIdx + 1) % n];
+    botUpdateUI();
+    if (gs.currentPlayer !== myId) setTimeout(botPlay, 900);
   }
-
-  botUpdateUI();
-  if (gs.currentPlayer !== myId) setTimeout(botPlay, 900);
 }
 
 function botShowRoundEnd() {
@@ -3200,7 +3226,7 @@ async function botPlayAgain() {
 // Синхронизация UI в bot режиме
 function botUpdateUI() {
   if (!botMode || !botState) return;
-  gameState = botState.gameState;
+  if (botState.gameState) gameState = botState.gameState;
   roomData = botState;
   myHand = gameState?.hands?.[myId] || [];
 
@@ -3208,7 +3234,11 @@ function botUpdateUI() {
     startGameUI(botState);
   }
 
-  handleGameState(botState);
+  try {
+    handleGameState(botState);
+  } catch(e) {
+    console.error('botUpdateUI error:', e);
+  }
 }
 
 // Вызывается после каждого обновления UI — проверяем нужен ли ход бота
