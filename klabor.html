@@ -570,7 +570,6 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    min-width: 120px;
   }
 
   .bid-title {
@@ -585,7 +584,6 @@
     color: rgba(240,216,128,0.7);
     letter-spacing: 0;
     white-space: normal;
-    max-width: 140px;
     text-align: left;
   }
   .bid-who {
@@ -596,26 +594,25 @@
   }
 
   .bid-suits {
-    display: flex;
-    flex-direction: row;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: 6px;
     margin: 0;
-    align-items: center;
   }
   .suit-btn {
-    padding: 6px 10px;
+    padding: 7px 6px;
     border-radius: 8px;
     border: 1px solid rgba(255,255,255,0.15);
     background: rgba(255,255,255,0.05);
     cursor: pointer;
     transition: all 0.15s;
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     align-items: center;
-    gap: 5px;
+    gap: 2px;
   }
-  .suit-btn .suit-icon { font-size: 1.2rem; line-height: 1; }
-  .suit-btn .suit-name { font-size: 0.6rem; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,0.5); }
+  .suit-btn .suit-icon { font-size: 1.4rem; line-height: 1; }
+  .suit-btn .suit-name { font-size: 0.58rem; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,0.5); }
   .suit-btn:hover:not(.disabled-suit) {
     background: rgba(201,168,76,0.2);
     border-color: var(--gold);
@@ -1181,7 +1178,7 @@
       <div class="suit-btn" data-suit="♣"><div class="suit-icon black">♣</div><div class="suit-name">Трефы</div></div>
     </div>
     <!-- Кнопки действий -->
-    <div style="display:flex;flex-direction:column;gap:6px;min-width:130px">
+    <div style="display:flex;flex-direction:column;gap:5px;margin-top:2px">
       <button class="bid-confirm-btn" id="bid-confirm-btn" disabled>Принять</button>
       <button class="bid-pass-btn" id="bid-pass-btn">Пас</button>
     </div>
@@ -2210,16 +2207,16 @@ function handleBidPhase(r) {
     document.getElementById('bid-suits').style.opacity='1';
     document.getElementById('bid-suits').style.pointerEvents='auto';
     document.getElementById('bid-confirm-btn').disabled = !selectedBidSuit;
-    // Пас недоступен при обязе
+    document.getElementById('bid-confirm-btn').style.display = 'block';
     document.getElementById('bid-pass-btn').style.display = isObligatory ? 'none' : 'block';
   } else {
     const cpname = r.players[gs.currentPlayer]?.name||'?';
-    whoEl.textContent = '⏳ ' + cpname + ' выбирает козырь...';
+    whoEl.textContent = '⏳ ' + cpname + '...';
     whoEl.style.color = 'rgba(240,216,128,0.5)';
-    document.getElementById('bid-suits').style.opacity='0.3';
+    document.getElementById('bid-suits').style.opacity='0.4';
     document.getElementById('bid-suits').style.pointerEvents='none';
-    document.getElementById('bid-confirm-btn').disabled = true;
-    document.getElementById('bid-pass-btn').style.display='none';
+    document.getElementById('bid-confirm-btn').style.display = 'none';
+    document.getElementById('bid-pass-btn').style.display = 'none';
     // Запускаем бота если его ход
     if (botMode) setTimeout(botBid, 900);
   }
