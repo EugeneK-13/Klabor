@@ -1984,6 +1984,10 @@ function arrangePlayerZones(r) {
 //  RENDER HANDS
 // ══════════════════════════════════════════
 function renderAllHands(r) {
+  // Убеждаемся что myHand актуален
+  if (r.gameState?.hands?.[myId]) {
+    myHand = r.gameState.hands[myId];
+  }
   const players = getOrderedPlayers(r);
   players.forEach(p => {
     const zone = getZoneForPlayer(p.id, r);
@@ -1992,6 +1996,10 @@ function renderAllHands(r) {
     handEl.innerHTML = '';
 
     if (p.id === myId) {
+      // Удаляем старую комбо-панель чтобы не дублировалась
+      const oldComboPanel = handEl.parentElement.querySelector('.combo-panel');
+      if (oldComboPanel) oldComboPanel.remove();
+
       // Комбо-панель слева от карт
       const combo = gameState.combos?.[myId];
       if (combo && combo.items && combo.items.length > 0) {
@@ -2484,7 +2492,8 @@ async function declareCombo(item) {
 //  PLAYING
 // ══════════════════════════════════════════
 function canIPlay(r) {
-  return r.gameState?.phase==='playing' && r.gameState?.currentPlayer===myId;
+  if (!r?.gameState) return false;
+  return r.gameState.phase === 'playing' && r.gameState.currentPlayer === myId;
 }
 
 function isCardPlayable(card, r) {
@@ -2526,6 +2535,13 @@ function onCardClick(card, el) {
 
 async function playCard(card) {
   if (!card) return;
+  // В bot режиме — локальная обработка
+  if (botMode) {
+    selectedCard = null;
+    document.querySelectorAll('.card.selected').forEach(c=>c.classList.remove('selected'));
+    botHumanPlayed(card);
+    return;
+  }
   const gs = gameState;
   const players = getOrderedPlayers(roomData);
   const n = players.length;
@@ -2919,7 +2935,12 @@ async function botDealRound() {
 
   const remainingDeck = deck.slice(idx);
   const round = botState.round || 1;
-  const dealerIdx = (round - 1) % n;
+  // В первом раунде дилер определяется рандомно (по правилам — жребий).
+  // Для удобства игрока: в раунде 1 дилер всегда бот, чтобы человек ходил первым в торгах.
+  const humanIdx = players.findIndex(p => p.id === myId);
+  const botIdx   = players.findIndex(p => p.id !== myId);
+  // Дилер чередуется: нечётный раунд — бот дилер, чётный — человек
+  const dealerIdx = (round % 2 === 1) ? botIdx : humanIdx;
   const dealer = players[dealerIdx].id;
   const firstBidder = players[(dealerIdx + 1) % n].id;
 
@@ -3112,7 +3133,7 @@ function botApplyPlay(botId, card) {
     setTimeout(() => {
       const winner = determineTrickWinner(gs.trick, gs.trump);
       const pts = Object.values(gs.trick).reduce((s,c) =>
-        s + (c.suit===gs.trump ? TRUMP_PTS[c.rank]||0 : TRICK_PTS[c.rank]||0), 0);
+        s + cardPts(c, gs.trump), 0);
       gs.roundPoints[winner] = (gs.roundPoints[winner]||0) + pts;
       gs.tricksTaken[winner] = (gs.tricksTaken[winner]||0) + 1;
       gs.trick = {};
@@ -3156,7 +3177,7 @@ function botHumanPlayed(card) {
     setTimeout(() => {
       const winner = determineTrickWinner(gs.trick, gs.trump);
       const pts = Object.values(gs.trick).reduce((s,c) =>
-        s + (c.suit===gs.trump ? TRUMP_PTS[c.rank]||0 : TRICK_PTS[c.rank]||0), 0);
+        s + cardPts(c, gs.trump), 0);
       gs.roundPoints[winner] = (gs.roundPoints[winner]||0) + pts;
       gs.tricksTaken[winner] = (gs.tricksTaken[winner]||0) + 1;
       const allEmpty = players.every(id => (gs.hands[id]||[]).length === 0);
