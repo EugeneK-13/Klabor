@@ -915,6 +915,75 @@
     font-weight: bold;
   }
 
+  /* ── Таймер хода ── */
+  #turn-timer {
+    position: fixed;
+    top: 50%;
+    right: 20px;
+    transform: translateY(-50%);
+    z-index: 100;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .timer-ring {
+    width: 56px; height: 56px;
+    position: relative;
+  }
+  .timer-ring svg { transform: rotate(-90deg); }
+  .timer-ring circle {
+    fill: none;
+    stroke-width: 4;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s linear, stroke 0.3s;
+  }
+  .timer-ring .bg { stroke: rgba(255,255,255,0.1); }
+  .timer-ring .fg { stroke: #c9a84c; }
+  .timer-ring .fg.warning { stroke: #ff6b6b; }
+  .timer-num {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--gold);
+    transform: rotate(90deg);
+  }
+  .timer-num.warning { color: #ff6b6b; }
+  .timer-label {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.4);
+  }
+
+  /* ── Кнопка Сдаться ── */
+  #btn-forfeit {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 150;
+    background: rgba(180,30,30,0.15);
+    border: 1px solid rgba(180,30,30,0.4);
+    color: rgba(255,100,100,0.7);
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 0.75rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: none;
+  }
+  #btn-forfeit:hover {
+    background: rgba(180,30,30,0.3);
+    border-color: rgba(255,80,80,0.6);
+    color: #ff8888;
+  }
+
   /* Taken tricks indicator */
   .tricks-taken {
     font-size: 0.7rem;
@@ -1018,6 +1087,13 @@
       <div class="select-row">
         <div class="sel-btn active" data-pts="501">501</div>
         <div class="sel-btn" data-pts="1001">1001</div>
+      </div>
+    </div>
+    <div class="input-group">
+      <label>Время на ход</label>
+      <div class="select-row">
+        <div class="sel-btn active" data-time="normal">60 сек</div>
+        <div class="sel-btn" data-time="fast">30 сек</div>
       </div>
     </div>
     <div class="divider"></div>
@@ -1156,7 +1232,23 @@
 
   <!-- Notifications -->
   <div id="notif"></div>
+
+  <!-- Turn Timer -->
+  <div id="turn-timer">
+    <div class="timer-ring">
+      <svg width="56" height="56" viewBox="0 0 56 56">
+        <circle class="bg" cx="28" cy="28" r="24"/>
+        <circle class="fg" id="timer-arc" cx="28" cy="28" r="24"
+          stroke-dasharray="150.8" stroke-dashoffset="0"/>
+      </svg>
+      <div class="timer-num" id="timer-num">30</div>
+    </div>
+    <div class="timer-label">сек</div>
+  </div>
 </div>
+
+<!-- Forfeit button (outside game div) -->
+<button id="btn-forfeit">🏳 Сдаться</button>
 
 <!-- ══════════════ OVERLAYS ══════════════ -->
 
@@ -1491,6 +1583,7 @@ function shuffle(arr) {
 // ══════════════════════════════════════════
 let chosenMode = 'solo';
 let chosenPts  = 501;
+let chosenTime = 'normal'; // 'normal'=60s, 'fast'=30s
 
 function selectMode(el, v) {
   document.querySelectorAll('[data-mode]').forEach(b=>b.classList.remove('active'));
@@ -1808,12 +1901,9 @@ function startGameUI(r) {
   hide('lobby'); hide('waiting-room');
   document.getElementById('lobby').style.display = 'none';
   document.getElementById('game').style.display = 'block';
+  document.getElementById('btn-forfeit').style.display = 'block';
 
-  // Set mode label
-  const modeNames = {solo:'1×1',trio:'1×1×1',team:'2×2'};
   document.getElementById('mode-label').textContent = r.target + ' очков';
-
-  // Team labels & scores
   setupTeamLabels(r);
 }
 
@@ -1899,6 +1989,9 @@ function handleGameState(r) {
     }
   });
 
+  // Таймер хода
+  checkAndStartTimer(r);
+
   // Phase handling
   if (gameState.phase === 'bidding') {
     handleBidPhase(r);
@@ -1906,6 +1999,7 @@ function handleGameState(r) {
     document.getElementById('bid-panel').classList.add('hidden');
     handlePlayPhase(r);
   } else if (gameState.phase === 'roundEnd') {
+    stopTurnTimer();
     showRoundEnd(r);
   }
 }
@@ -1983,11 +2077,26 @@ function arrangePlayerZones(r) {
 // ══════════════════════════════════════════
 //  RENDER HANDS
 // ══════════════════════════════════════════
+// Хеш последних отрисованных рук — чтобы не мигали при каждом poll
+let _lastHandHash = '';
+
 function renderAllHands(r) {
-  // Убеждаемся что myHand актуален
-  if (r.gameState?.hands?.[myId]) {
+  // Синхронизируем myHand из gameState
+  if (r?.gameState?.hands?.[myId]) {
     myHand = r.gameState.hands[myId];
   }
+
+  // Проверяем изменились ли руки — если нет, не перерисовываем
+  const gs = r?.gameState;
+  const handHash = JSON.stringify({
+    myHand: gs?.hands?.[myId],
+    phase: gs?.phase,
+    currentPlayer: gs?.currentPlayer,
+    trick: gs?.trick
+  });
+  if (handHash === _lastHandHash) return;
+  _lastHandHash = handHash;
+
   const players = getOrderedPlayers(r);
   players.forEach(p => {
     const zone = getZoneForPlayer(p.id, r);
@@ -2451,7 +2560,7 @@ function calcCombosDetail(hand, trump) {
     const hasK = hand.some(c=>c.suit===suit&&c.rank==='K');
     const hasQ = hand.some(c=>c.suit===suit&&c.rank==='Q');
     if (hasK && hasQ) {
-      items.push({ name:`Марьяж ${suit}`, pts: MARRIAGE_PTS.nonTrump, cards:[], suit, isBella:false });
+      items.push({ name:`Белла ${suit}`, pts: MARRIAGE_PTS.nonTrump, cards:[], suit, isBella:false });
       total += MARRIAGE_PTS.nonTrump;
     }
   });
@@ -2497,40 +2606,45 @@ function canIPlay(r) {
 }
 
 function isCardPlayable(card, r) {
-  const gs = r.gameState;
+  const gs = r?.gameState;
+  if (!gs) return false;
   const trick = gs.trick||{};
   const led   = Object.values(trick)[0];
-  if (!led) return true; // First to play — anything
+  if (!led) return true; // Первый ход — любая карта
 
   const ledSuit = led.suit;
   const trump   = gs.trump;
+  // Рука игрока из gameState (актуальна)
+  const hand = gs.hands?.[myId] || myHand;
 
-  // Must follow suit if possible
-  const hasSuit = myHand.some(c=>c.suit===ledSuit);
-  if(hasSuit) return card.suit===ledSuit;
+  // Масть захода — обязаны следовать
+  const hasSuit = hand.some(c=>c.suit===ledSuit);
+  if (hasSuit) return card.suit===ledSuit;
 
-  // Must trump if possible and led was not trump
-  if(ledSuit!==trump) {
-    const hasTrump = myHand.some(c=>c.suit===trump);
-    if(hasTrump) return card.suit===trump;
+  // Нет масти — должны бить козырем если есть
+  if (ledSuit !== trump) {
+    const hasTrump = hand.some(c=>c.suit===trump);
+    if (hasTrump) return card.suit===trump;
   }
 
-  return true; // Can play anything
+  return true;
 }
 
 function onCardClick(card, el) {
-  if (!canIPlay(roomData)) return;
-  if (!isCardPlayable(card, roomData)) return;
-
-  if (selectedCard && selectedCard.suit===card.suit && selectedCard.rank===card.rank) {
-    // Double-click = play
-    playCard(card);
-  } else {
-    // First click = select
-    document.querySelectorAll('.card.selected').forEach(c=>c.classList.remove('selected'));
-    el.classList.add('selected');
-    selectedCard = card;
+  const r = botMode ? botState : roomData;
+  if (!canIPlay(r)) {
+    console.log('[click] canIPlay=false, phase=', r?.gameState?.phase, 'currentPlayer=', r?.gameState?.currentPlayer, 'myId=', myId);
+    return;
   }
+  if (!isCardPlayable(card, r)) {
+    console.log('[click] card not playable:', card);
+    return;
+  }
+  // Один клик = играть сразу
+  document.querySelectorAll('.card.selected').forEach(c=>c.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedCard = card;
+  playCard(card);
 }
 
 async function playCard(card) {
@@ -2861,19 +2975,9 @@ function cleanup() {
 // ══════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════
+// Enter для быстрого хода (онлайн)
 document.addEventListener('keydown', e => {
-  if(e.key==='Enter' && selectedCard) playCard(selectedCard);
-});
-
-// Double-click on card plays it immediately
-document.addEventListener('dblclick', e => {
-  const card = e.target.closest('.card.playable');
-  if (!card) return;
-  const suit = card.dataset.suit;
-  const rank = card.dataset.rank;
-  if (!suit||!rank) return;
-  const c = {suit,rank};
-  if(isCardPlayable(c, roomData)) playCard(c);
+  if(e.key==='Enter' && selectedCard && !botMode) playCard(selectedCard);
 });
 
 // ══════════════════════════════════════════
@@ -2899,6 +3003,7 @@ async function startBotGame() {
   botState = {
     mode: chosenMode,
     target: chosenPts,
+    timeLimit: chosenTime,
     maxPlayers: 2,
     status: 'playing',
     host: myId,
@@ -3269,6 +3374,128 @@ function botCheckTurn() {
 }
 
 // ══════════════════════════════════════════
+//  TURN TIMER
+// ══════════════════════════════════════════
+let _timerInterval = null;
+let _timerSeconds  = 0;
+const CIRCUMFERENCE = 2 * Math.PI * 24; // r=24 → ~150.8
+
+function startTurnTimer(seconds) {
+  stopTurnTimer();
+  _timerSeconds = seconds;
+
+  const timerEl  = document.getElementById('turn-timer');
+  const numEl    = document.getElementById('timer-num');
+  const arcEl    = document.getElementById('timer-arc');
+  if (!timerEl) return;
+
+  timerEl.style.display = 'flex';
+  let remaining = seconds;
+
+  function tick() {
+    numEl.textContent = remaining;
+    const pct = remaining / seconds;
+    arcEl.style.strokeDashoffset = CIRCUMFERENCE * (1 - pct);
+
+    const isWarning = remaining <= 10;
+    arcEl.classList.toggle('warning', isWarning);
+    numEl.classList.toggle('warning', isWarning);
+
+    // Звуковой сигнал за 10 секунд
+    if (remaining === 10) playBeep(880, 0.3);
+    // Двойной сигнал за 5 секунд
+    if (remaining === 5)  playBeep(1100, 0.5);
+
+    if (remaining <= 0) {
+      stopTurnTimer();
+      onTimerExpired();
+      return;
+    }
+    remaining--;
+  }
+
+  tick();
+  _timerInterval = setInterval(tick, 1000);
+}
+
+function stopTurnTimer() {
+  if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
+  const timerEl = document.getElementById('turn-timer');
+  if (timerEl) timerEl.style.display = 'none';
+}
+
+// Короткий бип через Web Audio API
+function playBeep(freq, duration) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = freq;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + duration);
+  } catch(e) { /* браузер может блокировать без взаимодействия */ }
+}
+
+function onTimerExpired() {
+  // Время вышло — сдаться/покинуть
+  notify('⏰ Время вышло!');
+  setTimeout(() => forfeitGame(), 1000);
+}
+
+// Сдаться / покинуть стол
+async function forfeitGame() {
+  stopTurnTimer();
+  if (botMode) {
+    // В bot режиме просто возвращаемся в лобби
+    botMode = false;
+    botState = null;
+    gameState = null;
+    document.getElementById('game').style.display = 'none';
+    document.getElementById('btn-forfeit').style.display = 'none';
+    show('main-menu');
+    return;
+  }
+  // Онлайн — удаляем себя из комнаты
+  if (roomRef && roomCode) {
+    try {
+      await update(roomRef, { [`players/${myId}/left`]: true, status: 'abandoned' });
+    } catch(e) {}
+  }
+  cleanup();
+  backToMain();
+}
+
+// Запускаем таймер когда наш ход
+let _lastTimerPlayer = null;
+function checkAndStartTimer(r) {
+  const gs = r?.gameState;
+  if (!gs) { stopTurnTimer(); return; }
+
+  const isMyTurn = gs.currentPlayer === myId && gs.phase === 'playing';
+  const isMyBidTurn = gs.currentPlayer === myId && gs.phase === 'bidding';
+
+  if (isMyTurn || isMyBidTurn) {
+    // Не перезапускаем если уже тикает для этого же хода
+    const turnKey = gs.currentPlayer + gs.phase + Object.keys(gs.trick||{}).length;
+    if (_lastTimerPlayer !== turnKey) {
+      _lastTimerPlayer = turnKey;
+      const secs = (r.timeLimit === 'fast') ? 30 : 60;
+      startTurnTimer(secs);
+    }
+  } else {
+    if (_lastTimerPlayer) {
+      _lastTimerPlayer = null;
+      stopTurnTimer();
+    }
+  }
+}
+
+// ══════════════════════════════════════════
 //  EVENT LISTENERS — надёжная привязка
 // ══════════════════════════════════════════
 function bindEvents() {
@@ -3292,6 +3519,9 @@ function bindEvents() {
   on('btn-next-round',   () => botMode ? botNextRound() : nextRound());
   on('btn-play-again',   () => botMode ? botPlayAgain() : playAgain());
   on('btn-back-lobby',   () => backToLobby());
+  on('btn-forfeit',      () => {
+    if (confirm('Сдаться и покинуть стол?')) forfeitGame();
+  });
 
   // Delegation for sel-btn (mode/pts) and suit-btn
   document.addEventListener('click', e => {
@@ -3299,6 +3529,13 @@ function bindEvents() {
     if (modeBtn) { selectMode(modeBtn, modeBtn.dataset.mode); return; }
     const ptsBtn = e.target.closest('[data-pts]');
     if (ptsBtn) { selectPts(ptsBtn, parseInt(ptsBtn.dataset.pts)); return; }
+    const timeBtn = e.target.closest('[data-time]');
+    if (timeBtn) {
+      document.querySelectorAll('[data-time]').forEach(b=>b.classList.remove('active'));
+      timeBtn.classList.add('active');
+      chosenTime = timeBtn.dataset.time;
+      return;
+    }
     const suitBtn = e.target.closest('.suit-btn[data-suit]');
     if (suitBtn) { selectBidSuit(suitBtn); return; }
   });
