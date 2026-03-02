@@ -1643,8 +1643,17 @@ function showJoinRoom() {
   hide('main-menu'); show('join-menu');
 }
 function backToMain() {
+  // Показываем lobby wrapper
+  const lobby = document.getElementById('lobby');
+  if (lobby) { lobby.classList.remove('hidden'); lobby.style.display = ''; }
+  // Скрываем подменю
   hide('create-menu'); hide('join-menu'); hide('waiting-room');
+  // Показываем главное меню
   show('main-menu');
+  // Скрываем игровые экраны
+  document.getElementById('game').style.display = 'none';
+  document.getElementById('btn-forfeit').style.display = 'none';
+  stopTurnTimer();
 }
 
 async function createRoom() {
@@ -2421,10 +2430,12 @@ async function confirmBid() {
   document.querySelectorAll('.suit-btn').forEach(b=>b.classList.remove('selected'));
 
   if (botMode) {
-    // В bot режиме обновляем botState напрямую и вызываем botConfirmTrump
+    // В bot режиме: botConfirmTrump сам раздаёт прикуп из botState.gameState
+    // НЕ используем handsWithPrikup — иначе двойная раздача
     const bidsList = [...(botState.gameState.bids||[]), { player:myId, type:'trump', suit:trump }];
     botConfirmTrump(bidsList, trump);
     return;
+    // ↑ return до Firebase update — всё локально
   }
 
   await update(roomRef, { gameState: gs });
@@ -3470,24 +3481,43 @@ function onTimerExpired() {
 // Сдаться / покинуть стол
 async function forfeitGame() {
   stopTurnTimer();
+  _lastHandHash = '';
+  _lastTimerPlayer = null;
+
+  // Скрываем всё игровое
+  document.getElementById('game').style.display = 'none';
+  document.getElementById('btn-forfeit').style.display = 'none';
+  document.getElementById('round-end').style.display = 'none';
+  document.getElementById('game-over').style.display = 'none';
+
   if (botMode) {
-    // В bot режиме просто возвращаемся в лобби
     botMode = false;
     botState = null;
     gameState = null;
-    document.getElementById('game').style.display = 'none';
-    document.getElementById('btn-forfeit').style.display = 'none';
-    show('main-menu');
-    return;
+    roomData  = null;
+  } else {
+    // Онлайн — уведомляем о выходе
+    if (roomRef && roomCode) {
+      try { await update(roomRef, { [`players/${myId}/left`]: true, status: 'abandoned' }); } catch(e) {}
+    }
+    cleanup();
   }
-  // Онлайн — удаляем себя из комнаты
-  if (roomRef && roomCode) {
-    try {
-      await update(roomRef, { [`players/${myId}/left`]: true, status: 'abandoned' });
-    } catch(e) {}
+
+  // Показываем лобби и главное меню
+  const lobby = document.getElementById('lobby');
+  if (lobby) lobby.style.display = '';  // снимаем любой style.display
+  lobby?.classList.remove('hidden');
+  // Скрываем все подменю лобби
+  ['create-menu','join-menu','waiting-room'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  });
+  // Показываем main-menu
+  const mm = document.getElementById('main-menu');
+  if (mm) {
+    mm.classList.remove('hidden');
+    mm.style.display = '';
   }
-  cleanup();
-  backToMain();
 }
 
 // Запускаем таймер когда наш ход
