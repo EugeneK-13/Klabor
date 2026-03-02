@@ -1650,7 +1650,6 @@ function backToMain() {
   document.getElementById('round-end').style.display = 'none';
   document.getElementById('game-over').style.display = 'none';
   stopTurnTimer();
-  _lastHandHash = '';
   _lastNotifiedTurn = null;
   _lastTimerPlayer  = null;
 
@@ -1954,18 +1953,6 @@ function handleGameState(r) {
 
   myHand = (gameState.hands?.[myId]) || [];
   // Сбрасываем кэш при переходе bidding→playing чтобы карты получили .playable
-  if (gameState.phase === 'playing' && !gameState.trick?.length) {
-    // Проверяем по trump: если козырь только появился — новая фаза
-    if (_prevPhase !== 'playing') {
-      _lastHandHash = '';
-      _lastNotifiedTurn = null;
-    }
-  }
-  if (gameState.phase === 'bidding' && (gameState.bids||[]).length === 0) {
-    _lastHandHash = '';
-    _lastNotifiedTurn = null;
-  }
-  _prevPhase = gameState.phase;
 
   // Update score display
   updateScoreDisplay(r);
@@ -2111,8 +2098,7 @@ function arrangePlayerZones(r) {
 //  RENDER HANDS
 // ══════════════════════════════════════════
 // Хеш последних отрисованных рук — чтобы не мигали при каждом poll
-let _lastHandHash = '';
-let _prevPhase = '';
+
 
 function renderAllHands(r) {
   // Синхронизируем myHand из gameState
@@ -2122,17 +2108,7 @@ function renderAllHands(r) {
 
   const gs = r?.gameState;
   if (!gs) return;
-
-  const handHash = JSON.stringify({
-    hands: gs.hands,
-    phase: gs.phase,
-    currentPlayer: gs.currentPlayer,
-    trick: gs.trick,
-    trump: gs.trump,
-    combos: gs.combos ? Object.keys(gs.combos) : []
-  });
-  if (handHash === _lastHandHash) return;
-  _lastHandHash = handHash;
+  // Убран кэш — рендерим всегда чтобы карты не зависали
 
   const players = getOrderedPlayers(r);
   players.forEach(p => {
@@ -2296,47 +2272,57 @@ function renderTable(r) {
 //  BIDDING — двухкруговая система
 // ══════════════════════════════════════════
 function handleBidPhase(r) {
-  const gs = r.gameState;
+  const gs       = r.gameState;
   if (!gs) return;
-  const isMyTurn  = gs.currentPlayer === myId;
-  const bidRound  = gs.bidRound || 1;
-  const isOblig   = gs.obligatory || false;
-  const openCard  = gs.openCard;
+  const isMyTurn = gs.currentPlayer === myId;
+  const bidRound = gs.bidRound || 1;
+  const isOblig  = !!gs.obligatory;
+  const openCard = gs.openCard;
 
-  document.getElementById('bid-panel').classList.remove('hidden');
+  // Показываем панель
+  const panel = document.getElementById('bid-panel');
+  panel.classList.remove('hidden');
 
-  // Заголовок
+  // Заголовок и подзаголовок
+  const titleEl = document.getElementById('bid-title');
+  const subEl   = document.getElementById('bid-subtitle');
   if (bidRound === 1) {
-    document.getElementById('bid-title').textContent = 'ТОРГИ';
-    document.getElementById('bid-subtitle').textContent = openCard
-      ? `Козырь — ${openCard.rank} ${openCard.suit} (${suitName(openCard.suit)})?`
+    titleEl.textContent = 'ТОРГИ — 1-й КРУГ';
+    subEl.textContent   = openCard
+      ? `Козырь: ${openCard.rank} ${openCard.suit} (${suitName(openCard.suit)})`
       : 'Первый круг';
   } else {
-    document.getElementById('bid-title').textContent = 'ТОРГИ — 2-й КРУГ';
-    document.getElementById('bid-subtitle').textContent = isOblig
-      ? '⚠ Обяз — нужно выбрать масть!'
-      : 'Все спасовали — выберите масть';
+    titleEl.textContent = 'ТОРГИ — 2-й КРУГ';
+    subEl.textContent   = isOblig ? '⚠ Обязательный выбор!' : 'Выберите любую масть';
   }
 
-  // Кнопки: круг 1 = Играю/Пас, круг 2 = масти + Объявить/Пас
+  // Блоки кнопок
   const r1 = document.getElementById('bid-round1-btns');
   const r2 = document.getElementById('bid-round2-btns');
+
   if (bidRound === 1) {
+    // Круг 1: только "Играю" / "Пас"
     r1.style.display = isMyTurn ? 'flex' : 'none';
     r2.style.display = 'none';
   } else {
+    // Круг 2: выбор масти
     r1.style.display = 'none';
     r2.style.display = isMyTurn ? 'flex' : 'none';
     if (isMyTurn) {
+      // Сброс выбора масти при каждом показе
+      if (!selectedBidSuit) {
+        document.querySelectorAll('.suit-btn').forEach(b => b.classList.remove('selected'));
+      }
+      document.getElementById('bid-confirm-btn').textContent = 'Объявить';
       document.getElementById('bid-confirm-btn').disabled = !selectedBidSuit;
-      const p2 = document.getElementById('bid-pass-btn2');
-      if (p2) p2.style.display = isOblig ? 'none' : '';
+      const passBtn2 = document.getElementById('bid-pass-btn2');
+      if (passBtn2) passBtn2.style.display = isOblig ? 'none' : '';
     }
   }
 
   // История ставок
   document.getElementById('bid-history').innerHTML = (gs.bids||[]).map(b => {
-    const nm = r.players[b.player]?.name || '?';
+    const nm = r.players?.[b.player]?.name || '?';
     return b.type === 'pass'
       ? `<div class="bid-chip pass">${nm}: Пас</div>`
       : `<div class="bid-chip bid">${nm}: ${b.suit}</div>`;
@@ -2345,14 +2331,17 @@ function handleBidPhase(r) {
   // Кто ходит
   const whoEl = document.getElementById('bid-who-label');
   if (isMyTurn) {
-    whoEl.textContent = isOblig ? '⚠ Ваш ход (обяз)' : '👉 Ваш ход';
+    whoEl.textContent = isOblig ? '⚠ Ваш ход — нужно выбрать!' : '👉 Ваш ход';
     whoEl.style.color = '#ffeb3b';
   } else {
-    whoEl.textContent = '⏳ ' + (r.players[gs.currentPlayer]?.name||'?') + '...';
+    const cpName = r.players?.[gs.currentPlayer]?.name || 'Бот';
+    whoEl.textContent = `⏳ ${cpName} думает...`;
     whoEl.style.color = 'rgba(240,216,128,0.5)';
-    if (botMode) setTimeout(botBid, 900);
+    // Запускаем бота ОДИН РАЗ через botSchedule
+    if (botMode) botSchedule(botBid, 800);
   }
 }
+
 // Принять масть фрезы (круг 1)
 function acceptFreza() {
   const gs = botMode ? botState?.gameState : gameState;
@@ -2367,11 +2356,6 @@ function selectBidSuit(el) {
   el.classList.add('selected');
   selectedBidSuit = el.dataset.suit;
   document.getElementById('bid-confirm-btn').disabled = false;
-  // В первом круге — обновляем текст кнопки
-  const gs = botMode ? botState?.gameState : gameState;
-  if ((gs?.bidRound||1) === 1) {
-    document.getElementById('bid-confirm-btn').textContent = `Принять ${el.dataset.suit}`;
-  }
 }
 
 async function confirmBid() {
@@ -2466,6 +2450,7 @@ async function passBid() {
       gs.currentPlayer = nextId;
       gs.obligatory = false;
     }
+    selectedBidSuit = null;
     botUpdateUI();
     if (gs.currentPlayer !== myId) botSchedule(botBid, 700);
     return;
@@ -3086,8 +3071,6 @@ async function botDealRound() {
     combos: {}, bids: [],
     deckSize: remainingDeck.length
   };
-
-  _lastHandHash    = '';
   _lastNotifiedTurn = null;
   _lastTimerPlayer  = null;
   botUpdateUI();
@@ -3095,18 +3078,25 @@ async function botDealRound() {
 }
 
 // ─── Планировщик хода бота (защита от дублей) ───
+let _botScheduleKey = 0;
 function botSchedule(fn, delay) {
+  const key = ++_botScheduleKey;
   setTimeout(() => {
     if (!botMode || !botState?.gameState) return;
+    if (key !== _botScheduleKey && fn === botBid) return; // только последний вызов botBid
     fn();
   }, delay);
 }
 
 // ─── Торги бота ───
+let _botBidPending = false;
 function botBid() {
   if (!botMode || !botState?.gameState) return;
   const gs = botState.gameState;
   if (gs.phase !== 'bidding' || gs.currentPlayer === myId) return;
+  if (_botBidPending) return; // защита от дублей
+  _botBidPending = true;
+  setTimeout(() => { _botBidPending = false; }, 2000);
 
   const botId    = gs.currentPlayer;
   const plist    = botGetPlayers();
@@ -3189,7 +3179,6 @@ function botConfirmTrump(bids, trump) {
   });
 
   // Полный сброс кэшей
-  _lastHandHash     = '';
   _lastNotifiedTurn = null;
   _lastTimerPlayer  = null;
 
@@ -3232,14 +3221,12 @@ function botApplyCard(playerId, card) {
       if (allEmpty) {
         gs.roundPoints[winner] = (gs.roundPoints[winner]||0) + 10;
         gs.phase = 'roundEnd';
-        _lastHandHash = '';
         botUpdateUI();
         setTimeout(botShowRoundEnd, 800);
         return;
       }
 
       // Сброс кэша — новая взятка начинается
-      _lastHandHash     = '';
       _lastNotifiedTurn = null;
       botUpdateUI();
       // Следующий ход: если бот — запускаем через botSchedule
@@ -3454,7 +3441,6 @@ function onTimerExpired() {
 // Сдаться / покинуть стол
 async function forfeitGame() {
   stopTurnTimer();
-  _lastHandHash = '';
   _lastTimerPlayer = null;
 
   // Скрываем всё игровое
