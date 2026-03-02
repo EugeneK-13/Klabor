@@ -2282,83 +2282,68 @@ function renderTable(r) {
 // ══════════════════════════════════════════
 function handleBidPhase(r) {
   const gs = r.gameState;
-  const isMyTurn = gs.currentPlayer === myId;
-  const bp = document.getElementById('bid-panel');
-  bp.classList.remove('hidden');
+  if (!gs) return;
+  const isMyTurn  = gs.currentPlayer === myId;
+  const bidRound  = gs.bidRound || 1;
+  const isOblig   = gs.obligatory || false;
+  const openCard  = gs.openCard;
 
-  const openCard = gs.openCard;
-  const bidRound = gs.bidRound || 1;
-  const isObligatory = gs.obligatory; // обяз — дилер обязан выбрать
+  document.getElementById('bid-panel').classList.remove('hidden');
 
   // Заголовок
-  const openSuit = openCard ? openCard.suit : null;
   if (bidRound === 1) {
     document.getElementById('bid-title').textContent = 'ТОРГИ';
-    document.getElementById('bid-subtitle').textContent = openSuit
-      ? `Козырь? ${openCard.rank} ${openCard.suit} (${suitName(openCard.suit)})`
+    document.getElementById('bid-subtitle').textContent = openCard
+      ? `Козырь — ${openCard.rank} ${openCard.suit} (${suitName(openCard.suit)})?`
       : 'Первый круг';
-    // Кнопка "Принять" вместо "Объявить козырь"
-    const confBtn = document.getElementById('bid-confirm-btn');
-    if (confBtn) confBtn.textContent = openSuit ? `Принять ${openCard.suit}` : 'Объявить';
   } else {
-    document.getElementById('bid-title').textContent = 'ТОРГИ — ВТОРОЙ КРУГ';
-    document.getElementById('bid-subtitle').textContent = 'Все спасовали — выберите масть';
-    const confBtn = document.getElementById('bid-confirm-btn');
-    if (confBtn) confBtn.textContent = 'Объявить козырь';
+    document.getElementById('bid-title').textContent = 'ТОРГИ — 2-й КРУГ';
+    document.getElementById('bid-subtitle').textContent = isOblig
+      ? '⚠ Обяз — нужно выбрать масть!'
+      : 'Все спасовали — выберите масть';
+  }
+
+  // Кнопки: круг 1 = Играю/Пас, круг 2 = масти + Объявить/Пас
+  const r1 = document.getElementById('bid-round1-btns');
+  const r2 = document.getElementById('bid-round2-btns');
+  if (bidRound === 1) {
+    r1.style.display = isMyTurn ? 'flex' : 'none';
+    r2.style.display = 'none';
+  } else {
+    r1.style.display = 'none';
+    r2.style.display = isMyTurn ? 'flex' : 'none';
+    if (isMyTurn) {
+      document.getElementById('bid-confirm-btn').disabled = !selectedBidSuit;
+      const p2 = document.getElementById('bid-pass-btn2');
+      if (p2) p2.style.display = isOblig ? 'none' : '';
+    }
   }
 
   // История ставок
-  const histEl = document.getElementById('bid-history');
-  histEl.innerHTML = (gs.bids||[]).map(b=>{
-    const pname = r.players[b.player]?.name||'?';
-    if (b.type==='pass') return `<div class="bid-chip pass">${pname}: Пас</div>`;
-    return `<div class="bid-chip bid">${pname}: ${b.suit}</div>`;
+  document.getElementById('bid-history').innerHTML = (gs.bids||[]).map(b => {
+    const nm = r.players[b.player]?.name || '?';
+    return b.type === 'pass'
+      ? `<div class="bid-chip pass">${nm}: Пас</div>`
+      : `<div class="bid-chip bid">${nm}: ${b.suit}</div>`;
   }).join('');
 
-  // Первый круг: масть фрезы автоматически подсвечена и выбрана
-  document.querySelectorAll('.suit-btn').forEach(btn => {
-    btn.classList.remove('disabled-suit', 'selected');
-    btn.style.opacity = '1';
-    if (bidRound === 1 && openCard) {
-      if (btn.dataset.suit !== openCard.suit) {
-        btn.style.opacity = '0.25';
-        btn.classList.add('disabled-suit');
-      } else {
-        // Автоматически "выбираем" масть фрезы
-        btn.classList.add('selected');
-        if (!selectedBidSuit) {
-          selectedBidSuit = openCard.suit;
-        }
-      }
-    }
-  });
-  // В первом круге кнопка "Принять" сразу активна
-  if (bidRound === 1 && openCard && isMyTurn) {
-    selectedBidSuit = openCard.suit;
-    document.getElementById('bid-confirm-btn').disabled = false;
-  }
-
+  // Кто ходит
   const whoEl = document.getElementById('bid-who-label');
   if (isMyTurn) {
-    const obligMsg = isObligatory ? ' (ОБЯЗ — нужно выбрать!)' : '';
-    whoEl.textContent = '👉 Ваш ход' + obligMsg;
+    whoEl.textContent = isOblig ? '⚠ Ваш ход (обяз)' : '👉 Ваш ход';
     whoEl.style.color = '#ffeb3b';
-    document.getElementById('bid-suits').style.opacity='1';
-    document.getElementById('bid-suits').style.pointerEvents='auto';
-    document.getElementById('bid-confirm-btn').disabled = !selectedBidSuit;
-    document.getElementById('bid-confirm-btn').style.display = 'block';
-    document.getElementById('bid-pass-btn').style.display = isObligatory ? 'none' : 'block';
   } else {
-    const cpname = r.players[gs.currentPlayer]?.name||'?';
-    whoEl.textContent = '⏳ ' + cpname + '...';
+    whoEl.textContent = '⏳ ' + (r.players[gs.currentPlayer]?.name||'?') + '...';
     whoEl.style.color = 'rgba(240,216,128,0.5)';
-    document.getElementById('bid-suits').style.opacity='0.4';
-    document.getElementById('bid-suits').style.pointerEvents='none';
-    document.getElementById('bid-confirm-btn').style.display = 'none';
-    document.getElementById('bid-pass-btn').style.display = 'none';
-    // Запускаем бота если его ход
     if (botMode) setTimeout(botBid, 900);
   }
+}
+// Принять масть фрезы (круг 1)
+function acceptFreza() {
+  const gs = botMode ? botState?.gameState : gameState;
+  if (!gs?.openCard) return;
+  selectedBidSuit = gs.openCard.suit;
+  confirmBid();
 }
 
 function selectBidSuit(el) {
@@ -2749,9 +2734,10 @@ function handlePlayPhase(r) {
   const gs = r.gameState;
   if (!gs) return;
   const isMyTurn = gs.currentPlayer === myId;
-  const turnKey  = gs.currentPlayer + Object.keys(gs.trick||{}).length;
+  // Уникальный ключ: игрок + кол-во карт в взятке + суммарно взяток
+  const totalTricks = Object.values(gs.tricksTaken||{}).reduce((a,b)=>a+b,0);
+  const turnKey = gs.currentPlayer + '|' + Object.keys(gs.trick||{}).length + '|' + totalTricks;
 
-  // Подсвечиваем активного игрока
   document.querySelectorAll('.player-name-tag').forEach(el => el.classList.remove('active-turn'));
   const zone = getZoneForPlayer(gs.currentPlayer, r);
   if (zone) document.getElementById('nametag-'+zone)?.classList.add('active-turn');
@@ -2761,7 +2747,7 @@ function handlePlayPhase(r) {
     if (isMyTurn) {
       notify('Ваш ход!');
     } else if (botMode) {
-      setTimeout(botPlay, 800);
+      setTimeout(botPlay, 600);
     }
   }
 }
@@ -3216,126 +3202,82 @@ function botConfirmTrump(bids, trump) {
   if (gs.currentPlayer !== myId) setTimeout(botPlay, 1500);
 }
 
-// Бот делает ход картой
+// ── Единая функция хода (бот и человек) ──
+function botApplyCard(playerId, card) {
+  const gs = botState.gameState;
+  if (!gs || gs.phase !== 'playing') return;
+  const players = Object.entries(botState.players)
+    .sort((a,b) => a[1].order - b[1].order).map(([id]) => id);
+  const n = players.length;
+
+  gs.hands[playerId] = (gs.hands[playerId]||[]).filter(
+    c => !(c.suit===card.suit && c.rank===card.rank));
+  gs.trick = { ...(gs.trick||{}), [playerId]: card };
+  if (playerId === myId) myHand = gs.hands[myId];
+
+  botUpdateUI();
+
+  if (Object.keys(gs.trick).length >= n) {
+    // Взятка полная — показываем карты 600мс, потом подбираем
+    setTimeout(() => {
+      const winner = determineTrickWinner(gs.trick, gs.trump);
+      const pts = Object.values(gs.trick).reduce((s,c)=>s+cardPts(c,gs.trump),0);
+      gs.roundPoints[winner] = (gs.roundPoints[winner]||0) + pts;
+      gs.tricksTaken[winner] = (gs.tricksTaken[winner]||0) + 1;
+      gs.trick = {};
+      gs.trickLeader = winner;
+      gs.currentPlayer = winner;
+      const allEmpty = players.every(id=>(gs.hands[id]||[]).length===0);
+      if (allEmpty) {
+        gs.roundPoints[winner] = (gs.roundPoints[winner]||0) + 10;
+        gs.phase = 'roundEnd';
+        botUpdateUI();
+        setTimeout(botShowRoundEnd, 800);
+        return;
+      }
+      botUpdateUI();
+      if (gs.currentPlayer !== myId) setTimeout(botPlay, 700);
+    }, 600);
+  } else {
+    const idx = players.indexOf(playerId);
+    gs.currentPlayer = players[(idx+1)%n];
+    botUpdateUI();
+    if (gs.currentPlayer !== myId) setTimeout(botPlay, 600);
+  }
+}
+
 function botPlay() {
   if (!botMode || !botState?.gameState) return;
   const gs = botState.gameState;
-  if (gs.currentPlayer === myId || gs.phase !== 'playing') return;
-
+  if (gs.phase !== 'playing' || gs.currentPlayer === myId) return;
   const botId = gs.currentPlayer;
-  const hand = [...(gs.hands[botId] || [])];
+  const hand = [...(gs.hands[botId]||[])];
   if (!hand.length) return;
 
-  // Найти играбельные карты
-  const playable = hand.filter(c => isCardPlayable(c, botState, botId));
-  if (!playable.length) {
-    console.warn('Bot has no playable cards!', hand, gs.trump);
-    return;
-  }
+  const playable = hand.filter(c=>isCardPlayable(c, botState, botId));
+  const pool = playable.length ? playable : hand;
 
-  const trick = gs.trick || {};
+  const trick = gs.trick||{};
   let card;
-
-  if (Object.keys(trick).length === 0) {
-    // Первый ход — предпочитаем козырей с валетом или старших
-    const trumpCards = playable.filter(c => c.suit === gs.trump);
-    card = trumpCards.length ? trumpCards[trumpCards.length - 1] : playable[playable.length - 1];
+  if (!Object.keys(trick).length) {
+    const trumps = pool.filter(c=>c.suit===gs.trump);
+    card = trumps.length ? trumps[trumps.length-1] : pool[pool.length-1];
   } else {
-    // Есть карты в взятке — пробуем побить
-    const ledSuit = Object.values(trick)[0]?.suit;
-    const suitCards = playable.filter(c => c.suit === ledSuit);
-    card = suitCards.length ? suitCards[suitCards.length - 1] : playable[0];
+    const led = Object.values(trick)[0]?.suit;
+    const suited = pool.filter(c=>c.suit===led);
+    const trumps = pool.filter(c=>c.suit===gs.trump);
+    card = suited.length ? suited[suited.length-1] : trumps.length ? trumps[0] : pool[0];
   }
-
-  botApplyPlay(botId, card);
+  botApplyCard(botId, card);
 }
 
-function botApplyPlay(botId, card) {
-  const gs = botState.gameState;
-  const players = Object.entries(botState.players)
-    .sort((a,b) => a[1].order - b[1].order)
-    .map(([id]) => id);
-  const n = players.length;
-
-  gs.hands[botId] = gs.hands[botId].filter(c => !(c.suit===card.suit && c.rank===card.rank));
-  gs.trick = { ...(gs.trick||{}), [botId]: card };
-
-  botUpdateUI(); // показываем карту на столе
-
-  if (Object.keys(gs.trick).length === n) {
-    // Пауза перед подбором взятки
-    setTimeout(() => {
-      const winner = determineTrickWinner(gs.trick, gs.trump);
-      const pts = Object.values(gs.trick).reduce((s,c) =>
-        s + cardPts(c, gs.trump), 0);
-      gs.roundPoints[winner] = (gs.roundPoints[winner]||0) + pts;
-      gs.tricksTaken[winner] = (gs.tricksTaken[winner]||0) + 1;
-      gs.trick = {};
-      gs.trickLeader = winner;
-      gs.currentPlayer = winner;
-
-      const allEmpty = players.every(id => (gs.hands[id]||[]).length === 0);
-      if (allEmpty) {
-        gs.roundPoints[winner] = (gs.roundPoints[winner]||0) + 10;
-        gs.phase = 'roundEnd';
-        botUpdateUI();
-        setTimeout(() => botShowRoundEnd(), 1000);
-        return;
-      }
-      botUpdateUI();
-      if (gs.currentPlayer !== myId) setTimeout(botPlay, 900);
-    }, 700);
-  } else {
-    const myIdx = players.indexOf(botId);
-    gs.currentPlayer = players[(myIdx + 1) % n];
-    botUpdateUI();
-    if (gs.currentPlayer !== myId) setTimeout(botPlay, 900);
-  }
-}
-
-// Человек сыграл карту — применяем локально в bot режиме
 function botHumanPlayed(card) {
+  if (!botMode || !botState?.gameState) return;
   const gs = botState.gameState;
-  gs.hands[myId] = gs.hands[myId].filter(c => !(c.suit===card.suit && c.rank===card.rank));
-  gs.trick = { ...(gs.trick||{}), [myId]: card };
-  gameState = gs;
-
-  const players = Object.entries(botState.players)
-    .sort((a,b) => a[1].order - b[1].order)
-    .map(([id]) => id);
-  const n = players.length;
-
-  botUpdateUI(); // показываем карту на столе
-
-  if (Object.keys(gs.trick).length === n) {
-    setTimeout(() => {
-      const winner = determineTrickWinner(gs.trick, gs.trump);
-      const pts = Object.values(gs.trick).reduce((s,c) =>
-        s + cardPts(c, gs.trump), 0);
-      gs.roundPoints[winner] = (gs.roundPoints[winner]||0) + pts;
-      gs.tricksTaken[winner] = (gs.tricksTaken[winner]||0) + 1;
-      const allEmpty = players.every(id => (gs.hands[id]||[]).length === 0);
-      gs.trick = {};
-      gs.trickLeader = winner;
-      gs.currentPlayer = winner;
-
-      if (allEmpty) {
-        gs.roundPoints[winner] = (gs.roundPoints[winner]||0) + 10;
-        gs.phase = 'roundEnd';
-        botUpdateUI();
-        setTimeout(() => botShowRoundEnd(), 1000);
-        return;
-      }
-      botUpdateUI();
-      if (gs.currentPlayer !== myId) setTimeout(botPlay, 900);
-    }, 700);
-  } else {
-    const myIdx = players.indexOf(myId);
-    gs.currentPlayer = players[(myIdx + 1) % n];
-    botUpdateUI();
-    if (gs.currentPlayer !== myId) setTimeout(botPlay, 900);
-  }
+  if (gs.phase !== 'playing' || gs.currentPlayer !== myId) return;
+  botApplyCard(myId, card);
 }
+
 
 function botShowRoundEnd() {
   showRoundEnd(botState);
@@ -3554,9 +3496,13 @@ function bindEvents() {
   on('btn-join-room',    () => joinRoom());
   on('start-btn',        () => startGame());
   on('room-code-disp',   () => copyCode());
+  on('bid-accept-btn',   () => acceptFreza());
+  on('bid-accept-btn',   () => acceptFreza());
   on('bid-confirm-btn',  () => confirmBid());
   on('bid-confirm-btn2', () => confirmBid());
   on('bid-pass-btn',     () => passBid());
+  on('bid-pass-btn2',    () => passBid());
+  on('bid-pass-btn2',    () => passBid());
   on('btn-next-round',   () => botMode ? botNextRound() : nextRound());
   on('btn-play-again',   () => botMode ? botPlayAgain() : playAgain());
   on('btn-back-lobby',   () => backToLobby());
