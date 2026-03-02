@@ -1643,17 +1643,22 @@ function showJoinRoom() {
   hide('main-menu'); show('join-menu');
 }
 function backToMain() {
-  // Показываем lobby wrapper
-  const lobby = document.getElementById('lobby');
-  if (lobby) { lobby.classList.remove('hidden'); lobby.style.display = ''; }
-  // Скрываем подменю
-  hide('create-menu'); hide('join-menu'); hide('waiting-room');
-  // Показываем главное меню
-  show('main-menu');
-  // Скрываем игровые экраны
+  // Скрываем ВСЕ игровые элементы
   document.getElementById('game').style.display = 'none';
   document.getElementById('btn-forfeit').style.display = 'none';
+  document.getElementById('bid-panel').classList.add('hidden');
+  document.getElementById('round-end').style.display = 'none';
+  document.getElementById('game-over').style.display = 'none';
   stopTurnTimer();
+  _lastHandHash = '';
+  _lastNotifiedTurn = null;
+  _lastTimerPlayer  = null;
+
+  // Показываем лобби
+  const lobby = document.getElementById('lobby');
+  if (lobby) { lobby.classList.remove('hidden'); lobby.style.display = ''; }
+  hide('create-menu'); hide('join-menu'); hide('waiting-room');
+  show('main-menu');
 }
 
 async function createRoom() {
@@ -1885,6 +1890,7 @@ async function dealNewRound(players, teams) {
   const gs = {
     phase: 'bidding',
     bidRound: 1,
+    obligatory: false,
     hands,
     remainingDeck,   // колода для прикупа
     extraCards,      // сколько карт в прикупе
@@ -2441,30 +2447,27 @@ async function passBid() {
   const _gs = botMode ? botState?.gameState : gameState;
   if (!_gs || _gs.currentPlayer !== myId) return;
   if (botMode) {
-    // В bot режиме — пас от человека
-    const players = Object.entries(botState.players)
-      .sort((a,b) => a[1].order - b[1].order)
-      .map(([id]) => id);
-    const gs = botState.gameState;
-    const n = players.length;
-    const myIdx = players.indexOf(myId);
-    const nextId = players[(myIdx + 1) % n];
-    const bids = [...(gs.bids||[]), { player:myId, type:'pass' }];
-    const passCount = bids.filter(b=>b.type==='pass').length;
-    const bidRound = gs.bidRound || 1;
+    const gs    = botState.gameState;
+    const plist = botGetPlayers();
+    const n     = plist.length;
+    const nextId = plist[(plist.indexOf(myId) + 1) % n];
+    const bids   = [...(gs.bids||[]), { player: myId, type: 'pass' }];
+    const passCount = bids.filter(b => b.type === 'pass').length;
+    const bidRound  = gs.bidRound || 1;
     gs.bids = bids;
     if (bidRound === 1 && passCount >= n) {
       gs.bidRound = 2;
       gs.currentPlayer = gs.firstBidder;
+      gs.obligatory = false; // явный сброс при переходе к кругу 2
     } else if (bidRound === 2 && passCount >= n * 2 - 1) {
       gs.currentPlayer = gs.dealer;
       gs.obligatory = true;
     } else {
       gs.currentPlayer = nextId;
+      gs.obligatory = false;
     }
-    gameState = gs;
     botUpdateUI();
-    if (gs.currentPlayer !== myId) setTimeout(botBid, 800);
+    if (gs.currentPlayer !== myId) botSchedule(botBid, 700);
     return;
   }
   const players = getOrderedPlayers(roomData);
@@ -3072,6 +3075,7 @@ async function botDealRound() {
 
   botState.gameState = {
     phase: 'bidding', bidRound: 1,
+    obligatory: false,          // явный сброс
     hands, remainingDeck, extraCards: 3,
     dealer, firstBidder,
     currentPlayer: firstBidder,
@@ -3456,6 +3460,7 @@ async function forfeitGame() {
   // Скрываем всё игровое
   document.getElementById('game').style.display = 'none';
   document.getElementById('btn-forfeit').style.display = 'none';
+  document.getElementById('bid-panel').classList.add('hidden');
   document.getElementById('round-end').style.display = 'none';
   document.getElementById('game-over').style.display = 'none';
 
