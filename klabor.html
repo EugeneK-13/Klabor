@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Клабор — Деберц Онлайн</title>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap" rel="stylesheet">
 <style>
@@ -426,6 +426,7 @@
     width: 72px;
     height: 108px;
     border-radius: 8px;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
     background: var(--card-bg);
     border: 1px solid rgba(0,0,0,0.15);
     box-shadow: 2px 3px 8px rgba(0,0,0,0.35);
@@ -880,12 +881,64 @@
   /* Hidden by default */
   .hidden { display: none !important; }
 
-  /* Responsive tweaks */
+  /* ── Responsive: Mobile ── */
   @media (max-width: 600px) {
-    .card { width: 58px; height: 87px; }
-    .card .card-suit-center { font-size: 1.5rem; }
-    #zone-bottom .hand .card:not(:first-child) { margin-left: -26px; }
-    .bid-box { padding: 24px 20px; min-width: unset; width: 92vw; }
+    .card { width: 50px; height: 76px; font-size: 0.72rem; border-radius: 6px; }
+    .card .card-rank-top, .card .card-rank-bot { font-size: 0.62rem; }
+    .card .card-suit-center { font-size: 1.1rem; }
+    #zone-bottom .hand .card:not(:first-child) { margin-left: -20px; }
+    #zone-top .hand .card:not(:first-child)    { margin-left: -24px; }
+    #score-bar { height: 42px; padding: 0 8px; }
+    .team-score { font-size: 1.05rem; }
+    .team-label { font-size: 0.5rem; letter-spacing: 1px; }
+    #mode-label { display: none; }
+    #round-info    { top: 46px; left: 5px; font-size: 0.6rem; padding: 3px 6px; }
+    #trump-display { top: 46px; right: 5px; padding: 3px 7px; }
+    .trump-suit { font-size: 1.2rem; }
+    #zone-top    { top: 44px; }
+    #zone-bottom { bottom: 0px; }
+    #zone-left   { left: 0px; }
+    #zone-right  { right: 0px; }
+    .player-name-tag { font-size: 0.6rem; padding: 3px 7px; gap: 3px; }
+    .tricks-taken { font-size: 0.6rem; margin-top: 2px; }
+    #turn-timer { top: 44px; gap: 5px; padding: 5px 10px; }
+    .timer-ring { width: 34px !important; height: 34px !important; }
+    #timer-num { font-size: 0.75rem !important; }
+    #timer-whose { font-size: 0.7rem !important; }
+    #btn-forfeit { bottom: 4px; right: 4px; padding: 6px 10px; font-size: 0.68rem; }
+    #bid-panel {
+      position: fixed !important;
+      bottom: 0 !important; left: 0 !important; right: 0 !important;
+      top: auto !important; transform: none !important;
+      border-radius: 16px 16px 0 0; z-index: 300;
+    }
+    .bid-box {
+      flex-direction: column; align-items: stretch;
+      padding: 12px 14px 20px; min-width: unset; width: 100%; gap: 8px;
+    }
+    .bid-box-left { min-width: unset; }
+    .bid-title    { font-size: 0.68rem; }
+    .bid-subtitle { font-size: 0.65rem; }
+    .bid-history  { font-size: 0.6rem !important; max-width: unset !important; }
+    #bid-round1-btns { flex-direction: row !important; gap: 8px; }
+    #bid-round2-btns { gap: 6px; }
+    .bid-suits { grid-template-columns: repeat(4,1fr) !important; gap: 4px; }
+    .suit-btn  { padding: 6px 2px; }
+    .suit-icon { font-size: 1.05rem; }
+    .suit-name { font-size: 0.56rem; }
+    .bid-confirm-btn, .bid-pass-btn { padding: 8px 10px; font-size: 0.8rem; }
+    #round-end, #game-over { width: 94vw; padding: 16px 12px; border-radius: 12px; }
+    .round-score-table { font-size: 0.78rem; }
+    .round-end-title { font-size: 1.1rem; }
+    #btn-next-round { padding: 10px 20px; font-size: 0.85rem; }
+    #notif { bottom: 60px; }
+  }
+  @media (max-width: 375px) {
+    .card { width: 42px; height: 63px; }
+    .card .card-suit-center { font-size: 0.95rem; }
+    #zone-bottom .hand .card:not(:first-child) { margin-left: -18px; }
+    #zone-top .hand .card:not(:first-child)    { margin-left: -22px; }
+    .team-score { font-size: 0.95rem; }
   }
 
   /* Marriages / combos banner */
@@ -1266,19 +1319,27 @@
       <div class="bid-title" id="bid-title">ТОРГИ</div>
       <div class="bid-subtitle" id="bid-subtitle"></div>
       <div class="bid-who" id="bid-who-label">Ваш ход</div>
-      <div class="bid-history" id="bid-history" style="font-size:0.7rem;margin-top:4px;max-width:140px;white-space:normal;text-align:left"></div>
+      <div class="bid-history" id="bid-history"></div>
     </div>
-    <!-- Кнопки мастей -->
-    <div class="bid-suits" id="bid-suits">
-      <div class="suit-btn" data-suit="♠"><div class="suit-icon black">♠</div><div class="suit-name">Пики</div></div>
-      <div class="suit-btn" data-suit="♥"><div class="suit-icon red">♥</div><div class="suit-name">Червы</div></div>
-      <div class="suit-btn" data-suit="♦"><div class="suit-icon red">♦</div><div class="suit-name">Бубны</div></div>
-      <div class="suit-btn" data-suit="♣"><div class="suit-icon black">♣</div><div class="suit-name">Трефы</div></div>
+
+    <!-- КРУГ 1: только Играю / Пас (скрыт по умолчанию) -->
+    <div id="bid-round1-btns" style="display:none;flex-direction:column;gap:8px;min-width:120px">
+      <button class="bid-confirm-btn" id="bid-accept-btn">✔ Играю</button>
+      <button class="bid-pass-btn"    id="bid-pass-btn">Пас</button>
     </div>
-    <!-- Кнопки действий -->
-    <div style="display:flex;flex-direction:column;gap:5px;margin-top:2px">
-      <button class="bid-confirm-btn" id="bid-confirm-btn" disabled>Принять</button>
-      <button class="bid-pass-btn" id="bid-pass-btn">Пас</button>
+
+    <!-- КРУГ 2: выбор масти + Объявить/Пас (скрыт по умолчанию) -->
+    <div id="bid-round2-btns" style="display:none;flex-direction:column;gap:6px">
+      <div class="bid-suits" id="bid-suits">
+        <div class="suit-btn" data-suit="♠"><div class="suit-icon black">♠</div><div class="suit-name">Пики</div></div>
+        <div class="suit-btn" data-suit="♥"><div class="suit-icon red">♥</div><div class="suit-name">Червы</div></div>
+        <div class="suit-btn" data-suit="♦"><div class="suit-icon red">♦</div><div class="suit-name">Бубны</div></div>
+        <div class="suit-btn" data-suit="♣"><div class="suit-icon black">♣</div><div class="suit-name">Трефы</div></div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="bid-confirm-btn" id="bid-confirm-btn" disabled style="flex:1">Объявить</button>
+        <button class="bid-pass-btn"    id="bid-pass-btn2"         style="flex:1">Пас</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1732,6 +1793,18 @@ function listenRoom() {
     if (!snap.exists()) { backToMain(); return; }
     const r = snap.val();
     roomData = r;
+
+    // Обнаружение ухода соперника во время игры
+    if ((r.status === 'playing' || r.status === 'abandoned') && document.getElementById('game').style.display === 'block') {
+      const opponents = Object.entries(r.players||{}).filter(([id]) => id !== myId);
+      const left = opponents.find(([,p]) => p.left === true);
+      if (left && !document.getElementById('opponent-left-overlay')) {
+        stopTurnTimer();
+        showOpponentLeftBanner(left[1]?.name || 'Соперник');
+        return;
+      }
+    }
+
     if (!document.getElementById('waiting-room').classList.contains('hidden')) {
       updateWaitingUI(r);
     }
@@ -1744,6 +1817,46 @@ function listenRoom() {
       handleGameState(r);
       setTimeout(() => showGameOver(r), 500);
     }
+  });
+}
+
+function showOpponentLeftBanner(name) {
+  stopTurnTimer();
+  let el = document.getElementById('opponent-left-overlay');
+  if (el) return;
+  el = document.createElement('div');
+  el.id = 'opponent-left-overlay';
+  el.style.cssText = 'position:fixed;inset:0;z-index:600;background:rgba(0,0,0,0.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;';
+  el.innerHTML = `
+    <div style="font-family:'Cinzel Decorative',serif;font-size:2.2rem;color:#ffd700;text-shadow:0 0 20px rgba(255,215,0,0.4)">🏆 Победа!</div>
+    <div style="color:rgba(255,255,255,0.85);font-size:1rem;text-align:center;line-height:1.7;max-width:320px;">
+      <b style="color:#ffd700">${name}</b> покинул игру.<br>Победа засчитана вам!
+    </div>
+    <div id="win-countdown" style="font-size:0.85rem;color:rgba(255,255,255,0.45);letter-spacing:1px;">
+      Выход через <span id="win-sec">10</span> сек...
+    </div>
+    <button id="btn-back-from-win" style="padding:14px 44px;background:linear-gradient(135deg,#c9a84c,#e8c96a);border:none;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer;color:#1a1a1a;letter-spacing:1px;box-shadow:0 4px 16px rgba(201,168,76,0.4);">
+      В ГЛАВНОЕ МЕНЮ
+    </button>`;
+  document.body.appendChild(el);
+
+  // Авто-выход через 10 секунд
+  let sec = 10;
+  const secEl = document.getElementById('win-sec');
+  const countTimer = setInterval(() => {
+    sec--;
+    if (secEl) secEl.textContent = sec;
+    if (sec <= 0) {
+      clearInterval(countTimer);
+      el.remove();
+      forfeitGame();
+    }
+  }, 1000);
+
+  document.getElementById('btn-back-from-win').addEventListener('click', () => {
+    clearInterval(countTimer);
+    el.remove();
+    forfeitGame();
   });
 }
 
@@ -2101,14 +2214,11 @@ function arrangePlayerZones(r) {
 
 
 function renderAllHands(r) {
-  // Синхронизируем myHand из gameState
-  if (r?.gameState?.hands?.[myId]) {
-    myHand = r.gameState.hands[myId];
-  }
-
   const gs = r?.gameState;
-  if (!gs) return;
-  // Убран кэш — рендерим всегда чтобы карты не зависали
+  if (!gs || !gs.hands) return;
+
+  // Всегда синхронизируем myHand из gameState (единый источник истины)
+  myHand = gs.hands[myId] || [];
 
   const players = getOrderedPlayers(r);
   players.forEach(p => {
@@ -2117,14 +2227,17 @@ function renderAllHands(r) {
     if (!handEl) return;
     handEl.innerHTML = '';
 
+    // Карты этого игрока ВСЕГДА берём из gs.hands
+    const playerHand = gs.hands[p.id] || [];
+
     if (p.id === myId) {
-      // Удаляем старую комбо-панель чтобы не дублировалась
-      const oldComboPanel = handEl.parentElement.querySelector('.combo-panel');
+      // Удаляем старую комбо-панель
+      const oldComboPanel = handEl.parentElement?.querySelector('.combo-panel');
       if (oldComboPanel) oldComboPanel.remove();
 
-      // Комбо-панель слева от карт
-      const combo = gameState.combos?.[myId];
-      if (combo && combo.items && combo.items.length > 0) {
+      // Комбо-панель
+      const combo = gs.combos?.[myId];
+      if (combo?.items?.length > 0) {
         const comboPanel = document.createElement('div');
         comboPanel.className = 'combo-panel';
         combo.items.forEach(item => {
@@ -2138,15 +2251,14 @@ function renderAllHands(r) {
         handEl.parentElement.insertBefore(comboPanel, handEl);
       }
 
-      // Show my cards face-up
-      const playable = canIPlay(r);
-      myHand.forEach((card, i) => {
+      // Карты человека — лицом вверх
+      const canPlay = canIPlay(r);
+      playerHand.forEach(card => {
         const el = makeCardEl(card, true);
-        // Без волновой анимации при перерисовке
-        if (playable) {
+        if (canPlay) {
           if (isCardPlayable(card, r)) {
             el.classList.add('playable');
-            el.addEventListener('click', ()=>onCardClick(card, el));
+            el.addEventListener('click', () => onCardClick(card, el));
           } else {
             el.style.opacity = '0.4';
           }
@@ -2154,12 +2266,9 @@ function renderAllHands(r) {
         handEl.appendChild(el);
       });
     } else {
-      // Face-down cards
-      const hand = gameState.hands?.[p.id]||[];
-      const count = hand.length;
-      for (let i=0;i<count;i++) {
-        const el = makeCardBack(zone==='left'||zone==='right');
-        handEl.appendChild(el);
+      // Карты соперника — рубашкой
+      for (let i = 0; i < playerHand.length; i++) {
+        handEl.appendChild(makeCardBack(zone === 'left' || zone === 'right'));
       }
     }
   });
@@ -2275,7 +2384,7 @@ function handleBidPhase(r) {
   const gs       = r.gameState;
   if (!gs) return;
   const isMyTurn = gs.currentPlayer === myId;
-  const bidRound = gs.bidRound || 1;
+  const bidRound = Number(gs.bidRound || 1); // coerce — из Firebase может прийти строка
   const isOblig  = !!gs.obligatory;
   const openCard = gs.openCard;
 
@@ -2301,9 +2410,9 @@ function handleBidPhase(r) {
   const r2 = document.getElementById('bid-round2-btns');
 
   if (bidRound === 1) {
-    // Круг 1: только "Играю" / "Пас"
+    // Круг 1: только "Играю" / "Пас" — r2 ВСЕГДА скрыт
     r1.style.display = isMyTurn ? 'flex' : 'none';
-    r2.style.display = 'none';
+    r2.style.display = 'none'; // 4 масти недоступны в круге 1
   } else {
     // Круг 2: выбор масти
     r1.style.display = 'none';
@@ -2460,7 +2569,7 @@ async function passBid() {
   const myIdx = players.findIndex(p=>p.id===myId);
   const nextIdx = (myIdx+1)%n;
   const gs = gameState;
-  const bidRound = gs.bidRound || 1;
+  const bidRound = Number(gs.bidRound || 1);
 
   const bids = [...(gs.bids||[]), { player:myId, type:'pass' }];
 
@@ -3102,7 +3211,7 @@ function botBid() {
   const plist    = botGetPlayers();
   const botHand  = gs.hands[botId] || [];
   const openCard = gs.openCard;
-  const bidRound = gs.bidRound || 1;
+  const bidRound = Number(gs.bidRound || 1);
   const nextId   = plist[(plist.indexOf(botId) + 1) % plist.length];
 
   // Решение: принять или пасовать
@@ -3198,11 +3307,22 @@ function botApplyCard(playerId, card) {
   const plist = botGetPlayers();
   const n     = plist.length;
 
-  // Снимаем карту с руки
-  gs.hands[playerId] = (gs.hands[playerId]||[]).filter(
-    c => !(c.suit === card.suit && c.rank === card.rank));
+  // Защита: игрок уже ходил в этой взятке
+  if (gs.trick?.[playerId]) {
+    console.warn('botApplyCard: duplicate play blocked for', playerId);
+    return;
+  }
+  // Снимаем карту с руки (только первое совпадение)
+  let removed = false;
+  gs.hands[playerId] = (gs.hands[playerId]||[]).filter(c => {
+    if (!removed && c.suit === card.suit && c.rank === card.rank) { removed = true; return false; }
+    return true;
+  });
+  if (!removed) {
+    console.warn('botApplyCard: card not found in hand', card, playerId);
+    return;
+  }
   gs.trick = { ...(gs.trick||{}), [playerId]: card };
-  if (playerId === myId) myHand = gs.hands[myId];
 
   if (Object.keys(gs.trick).length >= n) {
     // Показываем все карты взятки, потом разрешаем
@@ -3514,13 +3634,10 @@ function bindEvents() {
   on('btn-join-room',    () => joinRoom());
   on('start-btn',        () => startGame());
   on('room-code-disp',   () => copyCode());
-  on('bid-accept-btn',   () => acceptFreza());
-  on('bid-accept-btn',   () => acceptFreza());
-  on('bid-confirm-btn',  () => confirmBid());
-  on('bid-confirm-btn2', () => confirmBid());
-  on('bid-pass-btn',     () => passBid());
-  on('bid-pass-btn2',    () => passBid());
-  on('bid-pass-btn2',    () => passBid());
+  on('bid-accept-btn',  () => acceptFreza());
+  on('bid-confirm-btn', () => confirmBid());
+  on('bid-pass-btn',    () => passBid());
+  on('bid-pass-btn2',   () => passBid());
   on('btn-next-round',   () => botMode ? botNextRound() : nextRound());
   on('btn-play-again',   () => botMode ? botPlayAgain() : playAgain());
   on('btn-back-lobby',   () => backToLobby());
