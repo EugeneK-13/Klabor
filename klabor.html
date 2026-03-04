@@ -540,12 +540,13 @@
   /* ── Панель торгов — тонкая полоска снизу ── */
   #bid-panel {
     position: fixed;
-    bottom: 155px;   /* выше карт игрока */
+    bottom: 145px;   /* выше карт игрока */
     left: 50%;
     transform: translateX(-50%);
     z-index: 200;
     pointer-events: all;
     width: auto;
+    min-width: 340px;
   }
 
   .bid-box {
@@ -553,17 +554,17 @@
     border: 1px solid rgba(201,168,76,0.4);
     border-bottom: none;
     border-radius: 14px 14px 0 0;
-    padding: 8px 20px 12px;
-    text-align: center;
+    padding: 10px 20px 14px;
     box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
     position: relative;
     z-index: 201;
-    /* Горизонтальный layout */
     display: flex;
     flex-direction: row;
     align-items: center;
     gap: 16px;
-    white-space: nowrap;
+    white-space: normal;
+    overflow: visible;
+    min-width: 320px;
   }
 
   .bid-box-left {
