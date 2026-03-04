@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Клабор — Деберц Онлайн</title>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap" rel="stylesheet">
 <style>
@@ -426,7 +426,6 @@
     width: 72px;
     height: 108px;
     border-radius: 8px;
-    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
     background: var(--card-bg);
     border: 1px solid rgba(0,0,0,0.15);
     box-shadow: 2px 3px 8px rgba(0,0,0,0.35);
@@ -881,65 +880,100 @@
   /* Hidden by default */
   .hidden { display: none !important; }
 
-  /* ── Responsive: Mobile ── */
+  /* Responsive tweaks */
   @media (max-width: 600px) {
+    /* Карты */
     .card { width: 50px; height: 76px; font-size: 0.72rem; border-radius: 6px; }
     .card .card-rank-top, .card .card-rank-bot { font-size: 0.62rem; }
     .card .card-suit-center { font-size: 1.1rem; }
     #zone-bottom .hand .card:not(:first-child) { margin-left: -20px; }
-    #zone-top .hand .card:not(:first-child)    { margin-left: -24px; }
+    #zone-top    .hand .card:not(:first-child) { margin-left: -24px; }
+
+    /* Score bar */
     #score-bar { height: 42px; padding: 0 8px; }
     .team-score { font-size: 1.05rem; }
     .team-label { font-size: 0.5rem; letter-spacing: 1px; }
     #mode-label { display: none; }
+
+    /* Round info + trump */
     #round-info    { top: 46px; left: 5px; font-size: 0.6rem; padding: 3px 6px; }
     #trump-display { top: 46px; right: 5px; padding: 3px 7px; }
     .trump-suit { font-size: 1.2rem; }
+
+    /* Зоны игроков */
     #zone-top    { top: 44px; }
-    #zone-bottom { bottom: 0px; }
-    #zone-left   { left: 0px; }
-    #zone-right  { right: 0px; }
+    #zone-bottom { bottom: 0; }
+    #zone-left   { left: 0; }
+    #zone-right  { right: 0; }
     .player-name-tag { font-size: 0.6rem; padding: 3px 7px; gap: 3px; }
     .tricks-taken { font-size: 0.6rem; margin-top: 2px; }
+
+    /* Таймер */
     #turn-timer { top: 44px; gap: 5px; padding: 5px 10px; }
     .timer-ring { width: 34px !important; height: 34px !important; }
+    .timer-ring svg { width: 34px; height: 34px; }
     #timer-num { font-size: 0.75rem !important; }
     #timer-whose { font-size: 0.7rem !important; }
+
+    /* Сдаться */
     #btn-forfeit { bottom: 4px; right: 4px; padding: 6px 10px; font-size: 0.68rem; }
+
+    /* ─── Панель торгов — нижний лист ─── */
     #bid-panel {
       position: fixed !important;
       bottom: 0 !important; left: 0 !important; right: 0 !important;
       top: auto !important; transform: none !important;
-      border-radius: 16px 16px 0 0; z-index: 300;
+      border-radius: 16px 16px 0 0;
+      max-height: 55vh;
+      overflow-y: auto;
+      z-index: 400;
     }
     .bid-box {
-      flex-direction: column; align-items: stretch;
-      padding: 12px 14px 20px; min-width: unset; width: 100%; gap: 8px;
+      flex-direction: column;
+      align-items: stretch;
+      padding: 14px 14px 24px;
+      min-width: unset;
+      width: 100%;
+      gap: 10px;
+      box-sizing: border-box;
     }
     .bid-box-left { min-width: unset; }
-    .bid-title    { font-size: 0.68rem; }
-    .bid-subtitle { font-size: 0.65rem; }
+    .bid-title    { font-size: 0.75rem; }
+    .bid-subtitle { font-size: 0.68rem; }
     .bid-history  { font-size: 0.6rem !important; max-width: unset !important; }
-    #bid-round1-btns { flex-direction: row !important; gap: 8px; }
-    #bid-round2-btns { gap: 6px; }
+    /* Круг 1: Играю/Пас — горизонтально */
+    #bid-round1-btns { flex-direction: row !important; gap: 10px; }
+    #bid-round1-btns .bid-confirm-btn,
+    #bid-round1-btns .bid-pass-btn { flex: 1; padding: 12px 8px; font-size: 0.9rem; }
+    /* Круг 2: масти */
+    #bid-round2-btns { gap: 8px; }
     .bid-suits { grid-template-columns: repeat(4,1fr) !important; gap: 4px; }
-    .suit-btn  { padding: 6px 2px; }
-    .suit-icon { font-size: 1.05rem; }
-    .suit-name { font-size: 0.56rem; }
-    .bid-confirm-btn, .bid-pass-btn { padding: 8px 10px; font-size: 0.8rem; }
+    .suit-btn  { padding: 8px 2px; }
+    .suit-icon { font-size: 1.1rem; }
+    .suit-name { font-size: 0.58rem; }
+    .bid-confirm-btn, .bid-pass-btn { padding: 10px; font-size: 0.85rem; }
+
+    /* Итоги */
     #round-end, #game-over { width: 94vw; padding: 16px 12px; border-radius: 12px; }
     .round-score-table { font-size: 0.78rem; }
     .round-end-title { font-size: 1.1rem; }
     #btn-next-round { padding: 10px 20px; font-size: 0.85rem; }
-    #notif { bottom: 60px; }
+
+    /* Уведомления — выше кнопки Сдаться */
+    #notif { bottom: 56px; }
   }
+
+  /* iPhone SE и очень маленькие */
   @media (max-width: 375px) {
     .card { width: 42px; height: 63px; }
     .card .card-suit-center { font-size: 0.95rem; }
     #zone-bottom .hand .card:not(:first-child) { margin-left: -18px; }
-    #zone-top .hand .card:not(:first-child)    { margin-left: -22px; }
+    #zone-top    .hand .card:not(:first-child) { margin-left: -22px; }
     .team-score { font-size: 0.95rem; }
+    #bid-round1-btns .bid-confirm-btn,
+    #bid-round1-btns .bid-pass-btn { padding: 10px 6px; font-size: 0.82rem; }
   }
+
 
   /* Marriages / combos banner */
   .combo-banner {
@@ -1314,21 +1348,18 @@
 <!-- Bid Panel -->
 <div id="bid-panel" class="hidden">
   <div class="bid-box">
-    <!-- Левая часть: заголовок и статус -->
     <div class="bid-box-left">
       <div class="bid-title" id="bid-title">ТОРГИ</div>
       <div class="bid-subtitle" id="bid-subtitle"></div>
       <div class="bid-who" id="bid-who-label">Ваш ход</div>
       <div class="bid-history" id="bid-history"></div>
     </div>
-
-    <!-- КРУГ 1: только Играю / Пас (скрыт по умолчанию) -->
+    <!-- КРУГ 1: только Играю / Пас -->
     <div id="bid-round1-btns" style="display:none;flex-direction:column;gap:8px;min-width:120px">
       <button class="bid-confirm-btn" id="bid-accept-btn">✔ Играю</button>
       <button class="bid-pass-btn"    id="bid-pass-btn">Пас</button>
     </div>
-
-    <!-- КРУГ 2: выбор масти + Объявить/Пас (скрыт по умолчанию) -->
+    <!-- КРУГ 2: 4 масти + Объявить/Пас -->
     <div id="bid-round2-btns" style="display:none;flex-direction:column;gap:6px">
       <div class="bid-suits" id="bid-suits">
         <div class="suit-btn" data-suit="♠"><div class="suit-icon black">♠</div><div class="suit-name">Пики</div></div>
@@ -1793,18 +1824,6 @@ function listenRoom() {
     if (!snap.exists()) { backToMain(); return; }
     const r = snap.val();
     roomData = r;
-
-    // Обнаружение ухода соперника во время игры
-    if ((r.status === 'playing' || r.status === 'abandoned') && document.getElementById('game').style.display === 'block') {
-      const opponents = Object.entries(r.players||{}).filter(([id]) => id !== myId);
-      const left = opponents.find(([,p]) => p.left === true);
-      if (left && !document.getElementById('opponent-left-overlay')) {
-        stopTurnTimer();
-        showOpponentLeftBanner(left[1]?.name || 'Соперник');
-        return;
-      }
-    }
-
     if (!document.getElementById('waiting-room').classList.contains('hidden')) {
       updateWaitingUI(r);
     }
@@ -1817,46 +1836,6 @@ function listenRoom() {
       handleGameState(r);
       setTimeout(() => showGameOver(r), 500);
     }
-  });
-}
-
-function showOpponentLeftBanner(name) {
-  stopTurnTimer();
-  let el = document.getElementById('opponent-left-overlay');
-  if (el) return;
-  el = document.createElement('div');
-  el.id = 'opponent-left-overlay';
-  el.style.cssText = 'position:fixed;inset:0;z-index:600;background:rgba(0,0,0,0.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;';
-  el.innerHTML = `
-    <div style="font-family:'Cinzel Decorative',serif;font-size:2.2rem;color:#ffd700;text-shadow:0 0 20px rgba(255,215,0,0.4)">🏆 Победа!</div>
-    <div style="color:rgba(255,255,255,0.85);font-size:1rem;text-align:center;line-height:1.7;max-width:320px;">
-      <b style="color:#ffd700">${name}</b> покинул игру.<br>Победа засчитана вам!
-    </div>
-    <div id="win-countdown" style="font-size:0.85rem;color:rgba(255,255,255,0.45);letter-spacing:1px;">
-      Выход через <span id="win-sec">10</span> сек...
-    </div>
-    <button id="btn-back-from-win" style="padding:14px 44px;background:linear-gradient(135deg,#c9a84c,#e8c96a);border:none;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer;color:#1a1a1a;letter-spacing:1px;box-shadow:0 4px 16px rgba(201,168,76,0.4);">
-      В ГЛАВНОЕ МЕНЮ
-    </button>`;
-  document.body.appendChild(el);
-
-  // Авто-выход через 10 секунд
-  let sec = 10;
-  const secEl = document.getElementById('win-sec');
-  const countTimer = setInterval(() => {
-    sec--;
-    if (secEl) secEl.textContent = sec;
-    if (sec <= 0) {
-      clearInterval(countTimer);
-      el.remove();
-      forfeitGame();
-    }
-  }, 1000);
-
-  document.getElementById('btn-back-from-win').addEventListener('click', () => {
-    clearInterval(countTimer);
-    el.remove();
-    forfeitGame();
   });
 }
 
@@ -2384,7 +2363,7 @@ function handleBidPhase(r) {
   const gs       = r.gameState;
   if (!gs) return;
   const isMyTurn = gs.currentPlayer === myId;
-  const bidRound = Number(gs.bidRound || 1); // coerce — из Firebase может прийти строка
+  const bidRound = gs.bidRound || 1;
   const isOblig  = !!gs.obligatory;
   const openCard = gs.openCard;
 
@@ -2410,9 +2389,9 @@ function handleBidPhase(r) {
   const r2 = document.getElementById('bid-round2-btns');
 
   if (bidRound === 1) {
-    // Круг 1: только "Играю" / "Пас" — r2 ВСЕГДА скрыт
+    // Круг 1: только "Играю" / "Пас"
     r1.style.display = isMyTurn ? 'flex' : 'none';
-    r2.style.display = 'none'; // 4 масти недоступны в круге 1
+    r2.style.display = 'none';
   } else {
     // Круг 2: выбор масти
     r1.style.display = 'none';
@@ -2569,7 +2548,7 @@ async function passBid() {
   const myIdx = players.findIndex(p=>p.id===myId);
   const nextIdx = (myIdx+1)%n;
   const gs = gameState;
-  const bidRound = Number(gs.bidRound || 1);
+  const bidRound = gs.bidRound || 1;
 
   const bids = [...(gs.bids||[]), { player:myId, type:'pass' }];
 
@@ -3211,7 +3190,7 @@ function botBid() {
   const plist    = botGetPlayers();
   const botHand  = gs.hands[botId] || [];
   const openCard = gs.openCard;
-  const bidRound = Number(gs.bidRound || 1);
+  const bidRound = gs.bidRound || 1;
   const nextId   = plist[(plist.indexOf(botId) + 1) % plist.length];
 
   // Решение: принять или пасовать
