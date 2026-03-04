@@ -2500,8 +2500,8 @@ async function confirmBid() {
     hands: sortedHands,
     remainingDeck: remainingDeck.slice(deckPos),
     frezaCard,
-    currentPlayer: gameState.firstBidder,
-    trickLeader: gameState.firstBidder,
+    currentPlayer: myId,       // тот кто объявил козырь ходит первым
+    trickLeader: myId,
     bids,
     trick: {},
     combos,
@@ -2537,12 +2537,19 @@ async function passBid() {
     const bidRound  = gs.bidRound || 1;
     gs.bids = bids;
     if (bidRound === 1 && passCount >= n) {
+      // Все спасовали в круге 1 → круг 2, firstBidder говорит первым
       gs.bidRound = 2;
       gs.currentPlayer = gs.firstBidder;
-      gs.obligatory = false; // явный сброс при переходе к кругу 2
-    } else if (bidRound === 2 && passCount >= n * 2 - 1) {
-      gs.currentPlayer = gs.dealer;
-      gs.obligatory = true;
+      gs.obligatory = false;
+    } else if (bidRound === 2) {
+      // Если следующий — дилер, то у него обяз
+      if (nextId === gs.dealer) {
+        gs.currentPlayer = gs.dealer;
+        gs.obligatory = true;
+      } else {
+        gs.currentPlayer = nextId;
+        gs.obligatory = false;
+      }
     } else {
       gs.currentPlayer = nextId;
       gs.obligatory = false;
@@ -2580,32 +2587,22 @@ async function passBid() {
       });
     }
   } else {
-    // Второй круг: любая масть
-    // Проверяем не дошли ли до дилера (обяз)
-    const passesInRound2 = bids.filter((b,i) => {
-      // Считаем пасы после начала второго круга
-      const round1passes = gs.bids.filter(b=>b.type==='pass').length;
-      return i >= round1passes && b.type==='pass';
-    }).length;
-
-    if (players[nextIdx].id === gs.dealer || passesInRound2 >= n) {
-      // Следующий — дилер → обяз
-      await update(roomRef, {
-        'gameState/bids': bids,
-        'gameState/currentPlayer': gs.dealer,
-        'gameState/obligatory': true
-      });
-    } else if (passesInRound2 >= n - 1) {
-      // Все спасовали во втором круге → обяз для дилера
+    // Второй круг: не-дилер сказал слово первым
+    // Если не-дилер пасует → дилер ОБЯЗАН объявить козырь (обяз)
+    const isNextDealer = players[nextIdx].id === gs.dealer;
+    if (isNextDealer) {
+      // Следующий — дилер, у него обяз
       await update(roomRef, {
         'gameState/bids': bids,
         'gameState/currentPlayer': gs.dealer,
         'gameState/obligatory': true
       });
     } else {
+      // Следующий — не дилер, просто передаём ход
       await update(roomRef, {
         'gameState/bids': bids,
-        'gameState/currentPlayer': players[nextIdx].id
+        'gameState/currentPlayer': players[nextIdx].id,
+        'gameState/obligatory': false
       });
     }
   }
@@ -2733,29 +2730,30 @@ function isCardPlayable(card, r, forPlayerId) {
   return true;
 }
 
+let _cardPlayLock = false;
+
 function onCardClick(card, el) {
+  if (_cardPlayLock) return; // защита от двойного клика
   const r = botMode ? botState : roomData;
-  if (!canIPlay(r)) {
-    console.log('[click] canIPlay=false, phase=', r?.gameState?.phase, 'currentPlayer=', r?.gameState?.currentPlayer, 'myId=', myId);
-    return;
-  }
-  if (!isCardPlayable(card, r)) {
-    console.log('[click] card not playable:', card);
-    return;
-  }
-  // Один клик = играть сразу
+  if (!canIPlay(r)) return;
+  if (!isCardPlayable(card, r)) return;
+
+  _cardPlayLock = true;
   document.querySelectorAll('.card.selected').forEach(c=>c.classList.remove('selected'));
   el.classList.add('selected');
+  // Делаем все карты некликабельными сразу
+  document.querySelectorAll('.card.playable').forEach(c => c.classList.remove('playable'));
   selectedCard = card;
   playCard(card);
 }
 
 async function playCard(card) {
-  if (!card) return;
+  if (!card) { _cardPlayLock = false; return; }
   // В bot режиме — локальная обработка
   if (botMode) {
     selectedCard = null;
     document.querySelectorAll('.card.selected').forEach(c=>c.classList.remove('selected'));
+    _cardPlayLock = false;
     botHumanPlayed(card);
     return;
   }
@@ -2809,6 +2807,7 @@ async function playCard(card) {
 
   selectedCard = null;
   await update(roomRef, updates);
+  _cardPlayLock = false; // разблокируем после отправки
 }
 
 function determineTrickWinner(trick, trump) {
@@ -2840,6 +2839,7 @@ function handlePlayPhase(r) {
 
   if (_lastNotifiedTurn !== turnKey) {
     _lastNotifiedTurn = turnKey;
+    _cardPlayLock = false; // новый ход — разблокируем
     if (isMyTurn) {
       notify('Ваше слово!');
     }
@@ -3268,8 +3268,8 @@ function botConfirmTrump(bids, trump) {
     hands: newHands,
     remainingDeck: remaining.slice(pos),
     frezaCard: gs.openCard,  // оригинальная фреза
-    currentPlayer: gs.firstBidder,
-    trickLeader:   gs.firstBidder,
+    currentPlayer: bids.find(b => b.type === 'trump')?.player || gs.firstBidder,
+    trickLeader:   bids.find(b => b.type === 'trump')?.player || gs.firstBidder,
     bids, trick: {}, combos,
     bidWinner: bids.find(b => b.type === 'trump')?.player || gs.firstBidder,
     deckSize: remaining.slice(pos).length
