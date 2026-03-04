@@ -903,6 +903,9 @@
     /* Зоны игроков */
     #zone-top    { top: 44px; }
     #zone-bottom { bottom: 0; }
+    body.bidding-open #zone-bottom { bottom: 155px; transition: bottom 0.2s; }
+    /* Когда торги открыты — карты видны над панелью */
+    body.bidding-open #zone-bottom { bottom: 160px; }
     #zone-left   { left: 0; }
     #zone-right  { right: 0; }
     .player-name-tag { font-size: 0.6rem; padding: 3px 7px; gap: 3px; }
@@ -1351,11 +1354,11 @@
     <div class="bid-box-left">
       <div class="bid-title" id="bid-title">ТОРГИ</div>
       <div class="bid-subtitle" id="bid-subtitle"></div>
-      <div class="bid-who" id="bid-who-label">Ваш ход</div>
+      <div class="bid-who" id="bid-who-label"></div>
       <div class="bid-history" id="bid-history"></div>
     </div>
     <!-- КРУГ 1: только Играю / Пас -->
-    <div id="bid-round1-btns" style="display:none;flex-direction:column;gap:8px;min-width:120px">
+    <div id="bid-round1-btns" style="display:none;gap:8px;min-width:120px">
       <button class="bid-confirm-btn" id="bid-accept-btn">✔ Играю</button>
       <button class="bid-pass-btn"    id="bid-pass-btn">Пас</button>
     </div>
@@ -1738,7 +1741,7 @@ function backToMain() {
   // Скрываем ВСЕ игровые элементы
   document.getElementById('game').style.display = 'none';
   document.getElementById('btn-forfeit').style.display = 'none';
-  document.getElementById('bid-panel').classList.add('hidden');
+  document.getElementById('bid-panel').classList.add('hidden'); document.body.classList.remove('bidding-open');
   document.getElementById('round-end').style.display = 'none';
   document.getElementById('game-over').style.display = 'none';
   stopTurnTimer();
@@ -2108,7 +2111,7 @@ function handleGameState(r) {
   if (gameState.phase === 'bidding') {
     handleBidPhase(r);
   } else if (gameState.phase === 'playing') {
-    document.getElementById('bid-panel').classList.add('hidden');
+    document.getElementById('bid-panel').classList.add('hidden'); document.body.classList.remove('bidding-open');
     handlePlayPhase(r);
   } else if (gameState.phase === 'roundEnd') {
     stopTurnTimer();
@@ -2363,13 +2366,13 @@ function handleBidPhase(r) {
   const gs       = r.gameState;
   if (!gs) return;
   const isMyTurn = gs.currentPlayer === myId;
-  const bidRound = gs.bidRound || 1;
+  const bidRound = Number(gs.bidRound) || 1;  // Number() — Firebase может вернуть строку
   const isOblig  = !!gs.obligatory;
   const openCard = gs.openCard;
 
   // Показываем панель
-  const panel = document.getElementById('bid-panel');
-  panel.classList.remove('hidden');
+  document.getElementById('bid-panel').classList.remove('hidden');
+  document.body.classList.add('bidding-open');
 
   // Заголовок и подзаголовок
   const titleEl = document.getElementById('bid-title');
@@ -2377,57 +2380,62 @@ function handleBidPhase(r) {
   if (bidRound === 1) {
     titleEl.textContent = 'ТОРГИ — 1-й КРУГ';
     subEl.textContent   = openCard
-      ? `Козырь: ${openCard.rank} ${openCard.suit} (${suitName(openCard.suit)})`
+      ? `Фреза: ${openCard.rank} ${openCard.suit} — принять или пас?`
       : 'Первый круг';
   } else {
     titleEl.textContent = 'ТОРГИ — 2-й КРУГ';
     subEl.textContent   = isOblig ? '⚠ Обязательный выбор!' : 'Выберите любую масть';
   }
 
-  // Блоки кнопок
+  // Кнопки: круг 1 = Играю/Пас, круг 2 = масти + Объявить/Пас
   const r1 = document.getElementById('bid-round1-btns');
   const r2 = document.getElementById('bid-round2-btns');
 
   if (bidRound === 1) {
-    // Круг 1: только "Играю" / "Пас"
     r1.style.display = isMyTurn ? 'flex' : 'none';
+    r1.style.flexDirection = 'column';
     r2.style.display = 'none';
   } else {
-    // Круг 2: выбор масти
     r1.style.display = 'none';
     r2.style.display = isMyTurn ? 'flex' : 'none';
+    r2.style.flexDirection = 'column';
     if (isMyTurn) {
-      // Сброс выбора масти при каждом показе
       if (!selectedBidSuit) {
         document.querySelectorAll('.suit-btn').forEach(b => b.classList.remove('selected'));
       }
-      document.getElementById('bid-confirm-btn').textContent = 'Объявить';
-      document.getElementById('bid-confirm-btn').disabled = !selectedBidSuit;
+      const confirmBtn = document.getElementById('bid-confirm-btn');
+      if (confirmBtn) { confirmBtn.textContent = 'Объявить'; confirmBtn.disabled = !selectedBidSuit; }
       const passBtn2 = document.getElementById('bid-pass-btn2');
       if (passBtn2) passBtn2.style.display = isOblig ? 'none' : '';
     }
   }
 
-  // История ставок
-  document.getElementById('bid-history').innerHTML = (gs.bids||[]).map(b => {
-    const nm = r.players?.[b.player]?.name || '?';
-    return b.type === 'pass'
-      ? `<div class="bid-chip pass">${nm}: Пас</div>`
-      : `<div class="bid-chip bid">${nm}: ${b.suit}</div>`;
-  }).join('');
-
-  // Кто ходит
+  // Статус — кто сейчас говорит слово
   const whoEl = document.getElementById('bid-who-label');
-  if (isMyTurn) {
-    whoEl.textContent = isOblig ? '⚠ Ваш ход — нужно выбрать!' : '👉 Ваш ход';
-    whoEl.style.color = '#ffeb3b';
-  } else {
-    const cpName = r.players?.[gs.currentPlayer]?.name || 'Бот';
-    whoEl.textContent = `⏳ ${cpName} думает...`;
-    whoEl.style.color = 'rgba(240,216,128,0.5)';
-    // Запускаем бота ОДИН РАЗ через botSchedule
-    if (botMode) botSchedule(botBid, 800);
+  if (whoEl) {
+    if (isMyTurn) {
+      whoEl.textContent = isOblig ? '⚠ Ваше слово — нужно выбрать!' : '👉 Ваше слово';
+      whoEl.style.color = '#ffeb3b';
+    } else {
+      const cpName = r.players?.[gs.currentPlayer]?.name || '...';
+      whoEl.textContent = `⏳ Слово за ${cpName}`;
+      whoEl.style.color = 'rgba(240,216,128,0.5)';
+    }
   }
+
+  // История ставок
+  const histEl = document.getElementById('bid-history');
+  if (histEl) {
+    histEl.innerHTML = (gs.bids||[]).map(b => {
+      const nm = r.players?.[b.player]?.name || '?';
+      return b.type === 'pass'
+        ? `<div class="bid-chip pass">${nm}: Пас</div>`
+        : `<div class="bid-chip bid">${nm}: ${b.suit}</div>`;
+    }).join('');
+  }
+
+  // Запускаем бота если его очередь
+  if (!isMyTurn && botMode) botSchedule(botBid, 800);
 }
 
 // Принять масть фрезы (круг 1)
@@ -2832,7 +2840,7 @@ function handlePlayPhase(r) {
   if (_lastNotifiedTurn !== turnKey) {
     _lastNotifiedTurn = turnKey;
     if (isMyTurn) {
-      notify('Ваш ход!');
+      notify('Ваше слово!');
     }
     // НЕ запускаем botPlay здесь — это делает botApplyCard через botSchedule
     // чтобы не было двойных вызовов
@@ -3545,7 +3553,7 @@ async function forfeitGame() {
   // Скрываем всё игровое
   document.getElementById('game').style.display = 'none';
   document.getElementById('btn-forfeit').style.display = 'none';
-  document.getElementById('bid-panel').classList.add('hidden');
+  document.getElementById('bid-panel').classList.add('hidden'); document.body.classList.remove('bidding-open');
   document.getElementById('round-end').style.display = 'none';
   document.getElementById('game-over').style.display = 'none';
 
@@ -3591,7 +3599,7 @@ function checkAndStartTimer(r) {
 
   const secs = (r.timeLimit === 'fast') ? 30 : 60;
   const isMe = gs.currentPlayer === myId;
-  const pname = isMe ? 'Ваш ход' : (r.players?.[gs.currentPlayer]?.name || 'Соперник');
+  const pname = isMe ? 'Ваше слово' : (r.players?.[gs.currentPlayer]?.name || 'Соперник');
   startTurnTimer(secs, pname);
 }
 
