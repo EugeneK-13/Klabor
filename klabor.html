@@ -252,7 +252,7 @@
     color: var(--gold);
     text-shadow: 0 0 20px rgba(201,168,76,0.4);
   }
-  .score-center { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .score-center { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .score-center-text { display: flex; flex-direction: column; align-items: center; gap: 2px; }
   .game-mode-label { font-family: 'Cinzel Decorative', serif; font-size: 0.62rem; color: var(--gold); letter-spacing: 2px; }
   .round-info { font-size: 0.75rem; color: rgba(240,216,128,0.5); letter-spacing: 1px; white-space: nowrap; }
@@ -545,23 +545,108 @@
   }
   #firebase-warn { position: fixed; top: 0; left: 0; right: 0; background: #c0392b; color: #fff; text-align: center; padding: 10px 16px; z-index: 9999; font-family: monospace; font-size: 12px; }
 
-  .combo-banner {
+  /* Показ комбинаций (терц, полтинник, белла) */
+  #combo-reveal {
     position: fixed;
-    top: 42%;
+    top: calc(var(--bar-h) + 8px);
     left: 50%;
-    transform: translate(-50%, -50%);
-    background: rgba(0,0,0,0.82);
-    border: 2px solid var(--gold);
+    transform: translateX(-50%);
+    z-index: 260;
+    background: rgba(8,24,15,0.96);
+    border: 1px solid var(--gold);
     border-radius: 14px;
-    padding: 16px 32px;
-    text-align: center;
-    z-index: 250;
-    pointer-events: none;
-    max-width: 90vw;
-    animation: popIn 0.3s ease, notifOut 0.4s ease 2.2s forwards;
+    padding: 10px 16px 14px;
+    min-width: 220px;
+    max-width: min(440px, 94vw);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6), 0 0 24px rgba(201,168,76,0.2);
+    cursor: pointer;
+    overflow: hidden;
+    animation: popIn 0.25s ease;
   }
-  .combo-banner .combo-title { font-family: 'Cinzel Decorative', serif; font-size: 1.1rem; color: var(--gold); margin-bottom: 4px; }
-  .combo-banner .combo-pts { font-size: 1.6rem; color: #fff; font-weight: bold; }
+  .cr-title { font-family: 'Cinzel Decorative', serif; font-size: 0.9rem; color: var(--gold); text-align: center; letter-spacing: 1px; }
+  .cr-group { margin-top: 8px; text-align: center; }
+  .cr-name { font-size: 0.95rem; color: var(--gold-light); }
+  .cr-name b { color: #fff; margin-left: 4px; }
+  .cr-cards { display: flex; justify-content: center; gap: 4px; margin-top: 5px; flex-wrap: wrap; }
+  .card.mini { width: 42px; height: 63px; padding: 2px 3px; border-radius: 5px; }
+  .card.mini .card-corner { font-size: 0.66rem; }
+  .card.mini .card-suit-center { font-size: 1.15rem; }
+  .cr-hint { font-size: 0.6rem; letter-spacing: 1px; color: rgba(240,216,128,0.4); text-align: center; margin-top: 6px; }
+  .cr-bar { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--gold); animation-name: crBar; animation-timing-function: linear; animation-fill-mode: forwards; }
+  @keyframes crBar { from { width: 100%; } to { width: 0; } }
+
+  /* Кнопки-иконки */
+  .icon-btn { background: rgba(0,0,0,0.3); border: 1px solid rgba(201,168,76,0.3); border-radius: 8px; color: var(--gold); font-size: 0.95rem; width: 32px; height: 32px; cursor: pointer; flex-shrink: 0; }
+
+  /* Чат и реакции */
+  #btn-chat {
+    position: fixed;
+    left: 16px;
+    bottom: calc(16px + var(--safe-b));
+    z-index: 150;
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(201,168,76,0.45);
+    font-size: 1.2rem;
+    cursor: pointer;
+  }
+  #chat-unread { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; border-radius: 9px; background: #c0392b; color: #fff; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; padding: 0 4px; font-family: sans-serif; }
+  #chat-panel {
+    position: fixed;
+    left: 16px;
+    bottom: calc(70px + var(--safe-b));
+    width: min(330px, calc(100vw - 32px));
+    max-height: 52vh;
+    z-index: 420;
+    background: rgba(10,28,18,0.97);
+    border: 1px solid rgba(201,168,76,0.4);
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+  }
+  .chat-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid rgba(201,168,76,0.15); font-size: 0.75rem; letter-spacing: 2px; text-transform: uppercase; color: var(--gold); }
+  .chat-head button { background: none; border: none; color: rgba(240,216,128,0.7); font-size: 1.1rem; cursor: pointer; min-width: 32px; min-height: 32px; }
+  .chat-reactions { display: flex; gap: 4px; padding: 8px 10px 4px; flex-wrap: wrap; }
+  .react-btn { font-size: 1.3rem; min-width: 42px; min-height: 42px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; cursor: pointer; }
+  .chat-phrases { display: flex; gap: 4px; padding: 4px 10px; flex-wrap: wrap; }
+  .phrase-btn { font-size: 0.8rem; padding: 5px 9px; min-height: 32px; background: rgba(201,168,76,0.1); border: 1px solid rgba(201,168,76,0.3); border-radius: 14px; color: var(--gold-light); cursor: pointer; }
+  #chat-log { flex: 1; overflow-y: auto; padding: 6px 12px; font-size: 0.9rem; min-height: 60px; user-select: text; -webkit-user-select: text; }
+  .chat-line { margin: 3px 0; word-wrap: break-word; }
+  .chat-line b { color: var(--gold); font-weight: 600; }
+  .chat-line.mine b { color: #ffeb3b; }
+  .chat-empty { color: rgba(240,216,128,0.35); font-size: 0.8rem; text-align: center; padding: 8px; }
+  #chat-form { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid rgba(201,168,76,0.15); }
+  #chat-input { flex: 1; min-width: 0; padding: 8px 12px; font-size: 1rem; }
+  #chat-form button { min-width: 44px; border-radius: 8px; border: 1px solid var(--gold); background: rgba(201,168,76,0.2); color: var(--gold-light); font-size: 1.1rem; cursor: pointer; }
+  @media (hover: hover) { .react-btn:hover, .phrase-btn:hover { border-color: var(--gold); } }
+  .chat-bubble {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 6px;
+    background: #fdf6e3;
+    color: #1a1a2e;
+    border-radius: 12px;
+    padding: 4px 10px;
+    font-size: 0.9rem;
+    width: max-content;
+    max-width: 200px;
+    z-index: 40;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+    pointer-events: none;
+    animation: popIn 0.2s ease, notifOut 0.4s ease 3.6s forwards;
+  }
+  .chat-bubble.emoji { font-size: 1.9rem; background: transparent; box-shadow: none; padding: 0; }
+  #zone-top .chat-bubble { bottom: auto; top: 100%; margin: 6px 0 0; }
+
+  /* История раундов */
+  #history-ov { background: rgba(0,0,0,0.75); z-index: 350; }
+  .hist-wrap { overflow-x: auto; margin-bottom: 16px; }
+  .round-score-table .hist-total td { border-top: 1px solid rgba(201,168,76,0.35); color: var(--gold); font-weight: 600; }
+  .hist-out { font-size: 0.75rem; color: rgba(240,216,128,0.6); }
 
   /* ════════════════ ОВЕРЛЕИ ════════════════ */
   .overlay {
@@ -705,6 +790,17 @@
     .game-over-title { font-size: 1.6rem; }
 
     #btn-forfeit { top: calc(var(--bar-h) + 66px); bottom: auto; right: 4px; padding: 5px 8px; font-size: 0.6rem; letter-spacing: 1px; }
+
+    #combo-reveal { top: calc(var(--bar-h) + 4px); padding: 8px 10px 12px; max-width: 96vw; }
+    .cr-title { font-size: 0.75rem; }
+    .cr-name { font-size: 0.82rem; }
+    .card.mini { width: 32px; height: 48px; padding: 1px 2px; }
+    .card.mini .card-corner { font-size: 0.56rem; }
+    .card.mini .card-suit-center { font-size: 0.85rem; }
+    .icon-btn { width: 28px; height: 28px; font-size: 0.8rem; }
+    #btn-chat { top: calc(var(--bar-h) + 96px); bottom: auto; left: 4px; width: 38px; height: 38px; font-size: 1rem; }
+    #chat-panel { left: 0; right: 0; bottom: 0; width: auto; max-height: 60vh; border-radius: 16px 16px 0 0; padding-bottom: var(--safe-b); }
+    .chat-bubble { max-width: 140px; font-size: 0.8rem; }
   }
   @media (max-width: 375px) {
     :root { --card-w: 44px; --card-h: 66px; --opp-w: 26px; --opp-h: 39px; --tc-w: 42px; --tc-h: 63px; }
@@ -760,7 +856,7 @@
     <div class="divider"></div>
     <button class="btn-primary" id="btn-create-room">Создать игру (онлайн)</button>
     <button class="btn-primary bot" id="btn-play-with-bot">🤖 Играть с ботом (офлайн)</button>
-    <div class="lobby-hint">С ботом — всегда 1×1</div>
+    <div class="lobby-hint">С ботами — в выбранном режиме (в 2×2 партнёр тоже бот)</div>
     <button class="btn-secondary" id="btn-back-create">← Назад</button>
   </div>
 
@@ -798,6 +894,7 @@
         <div class="game-mode-label" id="mode-label">501</div>
         <div class="round-info" id="round-label">Раунд 1</div>
       </div>
+      <button class="icon-btn" id="btn-history" title="История раундов" aria-label="История раундов">📜</button>
       <div id="turn-timer" class="hidden">
         <div class="timer-ring">
           <svg width="36" height="36" viewBox="0 0 40 40">
@@ -866,7 +963,33 @@
 </div>
 
 <div id="notif"></div>
+<div id="combo-reveal" class="hidden" role="status"></div>
 <button id="btn-forfeit">🏳 Сдаться</button>
+
+<!-- Чат и реакции (онлайн) -->
+<button id="btn-chat" class="hidden" aria-label="Чат">💬<span id="chat-unread" class="hidden"></span></button>
+<div id="chat-panel" class="hidden">
+  <div class="chat-head"><span>Чат стола</span><button id="chat-close" aria-label="Закрыть">✕</button></div>
+  <div class="chat-reactions">
+    <button class="react-btn" data-react="👍">👍</button>
+    <button class="react-btn" data-react="😂">😂</button>
+    <button class="react-btn" data-react="😮">😮</button>
+    <button class="react-btn" data-react="🔥">🔥</button>
+    <button class="react-btn" data-react="😡">😡</button>
+    <button class="react-btn" data-react="🙏">🙏</button>
+  </div>
+  <div class="chat-phrases">
+    <button class="phrase-btn" data-phrase="Хорошая игра!">Хорошая игра!</button>
+    <button class="phrase-btn" data-phrase="Ну ты даёшь!">Ну ты даёшь!</button>
+    <button class="phrase-btn" data-phrase="Секунду…">Секунду…</button>
+    <button class="phrase-btn" data-phrase="Ещё партию?">Ещё партию?</button>
+  </div>
+  <div id="chat-log"></div>
+  <form id="chat-form" autocomplete="off">
+    <input type="text" id="chat-input" maxlength="80" placeholder="Сообщение…">
+    <button type="submit" aria-label="Отправить">➤</button>
+  </form>
+</div>
 
 <!-- Торги -->
 <div id="bid-panel" class="hidden">
@@ -903,6 +1026,16 @@
     <div class="round-end-sub" id="re-sub"></div>
     <table class="round-score-table" id="re-table"></table>
     <button class="btn-primary" id="btn-next-round">Следующий раунд →</button>
+  </div>
+</div>
+
+<!-- История раундов -->
+<div id="history-ov" class="overlay">
+  <div class="round-end-box">
+    <div class="round-end-title">История раундов</div>
+    <div class="round-end-sub" id="hist-sub"></div>
+    <div class="hist-wrap"><table class="round-score-table" id="hist-table"></table></div>
+    <button class="btn-secondary" id="btn-hist-close">Закрыть</button>
   </div>
 </div>
 
@@ -968,6 +1101,7 @@ const LAST_TRICK_BONUS = 10;
 const BELLA_PTS = 20;
 const TERZ_PTS = 20;      // 3 карты подряд
 const FIFTY_PTS = 50;     // 4 и больше подряд
+const CAPOT_PTS = 250;    // капот: все взятки у одной стороны — 250 вместо очков за карты
 const EXTRA_CARDS = 3;    // добор после торгов (играющий: фреза + 2)
 const MODE_PLAYERS = { solo: 2, trio: 3, team: 4 };
 const MAX_EVENTS = 40;
@@ -1095,6 +1229,7 @@ function findSequences(hand) {
   return res;
 }
 function seqPts(len) { return len >= 4 ? FIFTY_PTS : TERZ_PTS; }
+function seqCards(s) { return SEQ_ORDER.slice(s.top - s.len + 1, s.top + 1).map(rank => ({ suit: s.suit, rank })); }
 function seqName(s) { return (s.len >= 4 ? 'Полтинник' : 'Терц') + ' ' + s.suit + ' до ' + RANK_GEN[SEQ_ORDER[s.top]]; }
 // >0 если a старше b: длиннее → выше старшая карта → козырная
 function compareSeq(a, b, trump) {
@@ -1149,6 +1284,7 @@ function normalizeRoom(r) {
   r.v = r.v || 0;
   r.winnerTeam = r.winnerTeam || null;
   r.forfeit = r.forfeit || null;
+  r.history = toArr(r.history);
   const gs = r.gameState;
   if (gs) {
     const ids = Object.keys(r.players);
@@ -1170,7 +1306,7 @@ function normalizeRoom(r) {
       c.items = toArr(c.items); c.total = c.total || 0; c.best = c.best || null;
     }
     gs.declared = gs.declared || {};
-    gs.events = toArr(gs.events);
+    gs.events = toArr(gs.events).map(e => ({ ...e, groups: toArr(e.groups).map(g => ({ ...g, cards: toArr(g.cards) })) }));
     gs.eventSeq = gs.eventSeq || 0;
     gs.turnSeq = gs.turnSeq || 0;
     gs.trickNo = gs.trickNo || 0;
@@ -1265,9 +1401,11 @@ function scoreRound(room) {
   const gs = room.gameState;
   const tks = teamKeys(room);
   const rows = {};
+  // Капот: одна сторона взяла все взятки
+  const capotTeam = tks.find(tk => room.teams[tk].reduce((s, id) => s + (gs.tricksTaken[id] || 0), 0) === gs.trickNo) || null;
   for (const tk of tks) {
     const m = room.teams[tk];
-    const cards = m.reduce((s, id) => s + (gs.roundPoints[id] || 0), 0);
+    const cards = tk === capotTeam ? CAPOT_PTS : m.reduce((s, id) => s + (gs.roundPoints[id] || 0), 0);
     const seq = gs.comboTeam === tk ? m.reduce((s, id) => s + (gs.combos[id]?.total || 0), 0) : 0;
     const bella = gs.bella?.scored && m.includes(gs.bella.holder) ? BELLA_PTS : 0;
     rows[tk] = { cards, seq, bella, total: cards + seq + bella, awarded: 0 };
@@ -1304,7 +1442,13 @@ function scoreRound(room) {
   } else room.hanging = newHang;
 
   for (const tk of tks) room.teamScores[tk] = (room.teamScores[tk] || 0) + rows[tk].awarded;
-  gs.roundResult = { rows, outcome, bidderTeam: bt, hangTo, hangGiven: hangTo ? prevHang : 0, hangingNow: room.hanging };
+  gs.roundResult = { rows, outcome, bidderTeam: bt, capot: capotTeam, hangTo, hangGiven: hangTo ? prevHang : 0, hangingNow: room.hanging };
+  room.history.push({
+    round: room.round, taker: gs.bidWinner, trump: gs.trump, outcome, capot: capotTeam,
+    awarded: Object.fromEntries(tks.map(t => [t, rows[t].awarded])),
+    after: Object.fromEntries(tks.map(t => [t, room.teamScores[t]]))
+  });
+  if (room.history.length > 60) room.history.splice(0, room.history.length - 60);
   gs.phase = 'roundEnd';
   gs.currentPlayer = null;
 
@@ -1373,14 +1517,16 @@ function reducePlay(room, a) {
     gs.declared[a.by] = true;
     const items = gs.combos[a.by]?.items || [];
     if (items.length) pushEvent(gs, 'combo', `${playerName(room, a.by)}: ${items.map(i => i.name).join(', ')}`,
-      { player: a.by, pts: items.reduce((s, i) => s + i.pts, 0) });
+      { player: a.by, pts: items.reduce((s, i) => s + i.pts, 0),
+        groups: items.map(i => ({ name: i.name, pts: i.pts, cards: seqCards(i) })) });
   }
   // Белла — когда сыграна вторая карта пары
   if (gs.bella && gs.bella.holder === a.by && card.suit === gs.trump && (card.rank === 'K' || card.rank === 'Q')) {
     gs.bella.played++;
     if (gs.bella.played === 2) {
       gs.bella.scored = true;
-      pushEvent(gs, 'bella', `${playerName(room, a.by)}: Белла!`, { player: a.by, pts: BELLA_PTS });
+      pushEvent(gs, 'bella', `${playerName(room, a.by)}: Белла!`, { player: a.by, pts: BELLA_PTS,
+        groups: [{ name: 'Белла', pts: BELLA_PTS, cards: [{ suit: gs.trump, rank: 'K' }, { suit: gs.trump, rank: 'Q' }] }] });
     }
   }
 
@@ -1443,6 +1589,7 @@ function reduce(room, a) {
       seats.forEach((id, i) => { room.players[id].order = i; });
       room.teams = buildTeams(seats, room.mode);
       room.teamScores = Object.fromEntries(Object.keys(room.teams).map(k => [k, 0]));
+      room.history = [];
       room.hanging = 0;
       room.round = 1;
       room.status = 'playing';
@@ -1462,6 +1609,7 @@ function reduce(room, a) {
     case 'PLAY_AGAIN': {
       if (room.status !== 'gameOver' && room.status !== 'abandoned') return NOOP;
       room.teamScores = Object.fromEntries(teamKeys(room).map(k => [k, 0]));
+      room.history = [];
       room.hanging = 0;
       room.round = 1;
       room.status = 'playing';
@@ -1481,6 +1629,21 @@ function reduce(room, a) {
       room.status = 'gameOver';
       room.winnerTeam = winner;
       room.forfeit = { player: a.target, reason: a.reason };
+      break;
+    }
+    case 'BOTIFY': {   // игрок не отвечает — за него играет бот
+      const gs = room.gameState;
+      const p = room.players[a.target];
+      if (room.status !== 'playing' || !p || p.bot || !gs || gs.currentPlayer !== a.target || gs.turnSeq !== a.turnSeq) return NOOP;
+      p.bot = true;
+      pushEvent(gs, 'info', `${p.name} не отвечает — за него играет бот 🤖`);
+      break;
+    }
+    case 'RECLAIM': {  // игрок вернулся
+      const p = room.players[a.by];
+      if (!p || !p.bot) return NOOP;
+      p.bot = false;
+      if (room.gameState) pushEvent(room.gameState, 'info', `${p.name} вернулся в игру`);
       break;
     }
     default: throw new RuleError('Неизвестное действие');
@@ -1587,6 +1750,7 @@ async function transact(path, fn) {
     const cur = normalizeRoom(rd.data);
     const res = fn(cur ? clone(cur) : null);
     if (res === NOOP) return cur;
+    if (res && typeof res === 'object') res.updatedAt = Date.now();
     const wr = await dbWrite(path, res, rd.etag);
     if (wr.status === 412) { await sleep(60 + Math.random() * 140); continue; }
     if (!wr.ok) {
@@ -1597,6 +1761,10 @@ async function transact(path, fn) {
   }
   throw new NetError('Сервер занят, попробуйте ещё раз');
 }
+async function dbRaw(url, opts) {
+  try { const r = await fetch(url, { cache: 'no-store', ...(opts || {}) }); return r.ok ? await r.json() : null; }
+  catch (e) { return null; }
+}
 
 let listenToken = null;
 function listenRoom(code) {
@@ -1604,7 +1772,9 @@ function listenRoom(code) {
   const token = { stopped: false, lastJson: null };
   listenToken = token;
   (async () => {
+    let iter = 0;
     while (!token.stopped) {
+      if (iter++ % 2 === 0) pollChatOnce(code, token);
       const rd = await dbReadPlain('rooms/' + code);
       if (token.stopped) break;
       if (rd.ok) {
@@ -1685,18 +1855,25 @@ async function dispatch(action) {
   } finally {
     busy = false;
     render();
-    if (botMode) scheduleBot();
   }
 }
 
-/* ── Бот: планировщик ── */
-function isBot(pid) { return typeof pid === 'string' && pid.startsWith('bot_'); }
+/* ── Бот: планировщик ──
+   Офлайн — ходит за всех ботов. Онлайн — за отключившихся игроков ходит
+   клиент первого «живого» игрока по порядку мест. */
+function isBotCtl(r, pid) { return typeof pid === 'string' && (pid.startsWith('bot_') || !!r?.players?.[pid]?.bot); }
+function botRunnerId(r) { return seatOrder(r).find(id => !isBotCtl(r, id)) || null; }
+let botKey = '';
+function cancelBot() { clearTimeout(botTimer); botTimer = null; botKey = ''; }
 function scheduleBot() {
-  clearTimeout(botTimer);
-  botTimer = null;
-  if (!botMode || !room || room.status !== 'playing') return;
+  if (!room || room.status !== 'playing') { cancelBot(); return; }
   const gs = room.gameState;
-  if (!gs || !isBot(gs.currentPlayer) || (gs.phase !== 'bidding' && gs.phase !== 'playing')) return;
+  if (!gs || !isBotCtl(room, gs.currentPlayer) || (gs.phase !== 'bidding' && gs.phase !== 'playing')) { cancelBot(); return; }
+  if (!botMode && botRunnerId(room) !== myId) { cancelBot(); return; }
+  const key = room.round + ':' + gs.turnSeq;
+  if (botTimer && botKey === key) return;
+  clearTimeout(botTimer);
+  botKey = key;
   const pid = gs.currentPlayer;
   const turn = gs.turnSeq;
   let delay = gs.phase === 'bidding' ? BOT_DELAY_BID : BOT_DELAY_PLAY;
@@ -1704,11 +1881,11 @@ function scheduleBot() {
   botTimer = setTimeout(() => {
     botTimer = null;
     const g = room?.gameState;
-    if (!botMode || !g || g.currentPlayer !== pid || g.turnSeq !== turn) return;
+    if (!g || g.currentPlayer !== pid || g.turnSeq !== turn || !isBotCtl(room, pid)) return;
     const action = g.phase === 'bidding'
       ? { type: 'BID', by: pid, ...botDecideBid(room, pid) }
       : { type: 'PLAY', by: pid, card: botChooseCard(room, pid) };
-    dispatch(action);
+    dispatch(action).then(ok => { if (!ok) { botKey = ''; setTimeout(scheduleBot, 400); } });
   }, delay);
 }
 
@@ -1745,11 +1922,12 @@ async function createRoom() {
       if (rd.data === null) code = c;
     }
     if (!code) { notify('Не удалось подобрать код, попробуйте ещё раз', true); return; }
+    cleanupOldRooms();
     const newRoom = {
       mode: chosenMode, target: chosenPts, timeLimit: chosenTime,
       maxPlayers: MODE_PLAYERS[chosenMode], status: 'waiting', host: myId,
       players: { [myId]: { name: myName, order: 0 } },
-      round: 0, hanging: 0, createdAt: Date.now(), v: 1
+      round: 0, hanging: 0, createdAt: Date.now(), updatedAt: Date.now(), v: 1
     };
     const wr = await dbWrite('rooms/' + code, newRoom, null);
     if (!wr.ok) { notify('Ошибка записи в Firebase (' + wr.status + ')', true); return; }
@@ -1787,9 +1965,33 @@ function enterRoom(code) {
 
 async function leaveRoom() {
   if (roomCode && myId) {
-    try { await transact('rooms/' + roomCode, r => reduce(r, { type: 'LEAVE', id: myId })); } catch (e) { /* выходим всё равно */ }
+    try {
+      const res = await transact('rooms/' + roomCode, r => reduce(r, { type: 'LEAVE', id: myId }));
+      if (res === null) dbWrite('chat/' + roomCode, null);
+    } catch (e) { /* выходим всё равно */ }
   }
   backToMenu();
+}
+
+// Удаляем комнаты без активности дольше ROOM_TTL и осиротевшие чаты (по 40 за раз)
+const ROOM_TTL_MS = 12 * 3600 * 1000;
+async function cleanupOldRooms() {
+  try {
+    const now = Date.now();
+    const rooms = await dbRaw(`${DB_URL}/rooms.json?shallow=true`) || {};
+    for (const code of Object.keys(rooms).slice(0, 40)) {
+      const info = await dbRaw(`${DB_URL}/rooms/${code}.json?shallow=true`);
+      if (!info) continue;
+      const ts = Number(info.updatedAt || info.createdAt || 0);
+      if (now - ts > ROOM_TTL_MS) {
+        await dbWrite('rooms/' + code, null);
+        await dbWrite('chat/' + code, null);
+        delete rooms[code];
+      }
+    }
+    const chats = await dbRaw(`${DB_URL}/chat.json?shallow=true`) || {};
+    for (const code of Object.keys(chats).filter(c => !rooms[c]).slice(0, 40)) await dbWrite('chat/' + code, null);
+  } catch (e) { /* уборка — не критично */ }
 }
 
 function copyCode() {
@@ -1803,11 +2005,12 @@ function startBotGame() {
   myId = 'human_' + genId();
   myName = readName();
   roomCode = '';
+  const n = MODE_PLAYERS[chosenMode] || 2;
+  const players = { [myId]: { name: myName, order: 0 } };
+  for (let i = 1; i < n; i++) players['bot_' + i] = { name: n === 2 ? '🤖 Бот' : '🤖 Бот ' + i, order: i };
   let r = normalizeRoom({
-    mode: 'solo', target: chosenPts, timeLimit: chosenTime, maxPlayers: 2,
-    status: 'waiting', host: myId,
-    players: { [myId]: { name: myName, order: 0 }, bot_1: { name: '🤖 Бот', order: 1 } },
-    round: 0, hanging: 0, v: 0
+    mode: chosenMode, target: chosenPts, timeLimit: chosenTime, maxPlayers: n,
+    status: 'waiting', host: myId, players, round: 0, hanging: 0, v: 0
   });
   room = reduce(r, { type: 'START', by: myId });
   resetUi();
@@ -1818,13 +2021,15 @@ function startBotGame() {
 function resetUi() {
   ui.selectedBidSuit = null; ui.bidTurnKey = ''; ui.selectedCardKey = null; ui.seen = null;
   ui.lastTrickKey = ''; ui.lastTrickUntil = 0; ui.playedKeys.clear(); ui.dealKey = '';
-  ui.goAck = ''; ui.turnNotifyKey = ''; ui.nextRoundSent = '';
+  ui.goAck = ''; ui.turnNotifyKey = ''; ui.nextRoundSent = ''; ui.reclaimSent = false;
+  resetReveal();
+  resetChat();
 }
 
 function backToMenu() {
   stopListening();
   stopTimer();
-  clearTimeout(botTimer); botTimer = null;
+  cancelBot();
   clearSession();
   botMode = false;
   room = null;
@@ -1837,6 +2042,9 @@ function backToMenu() {
   document.body.classList.remove('bidding-open');
   $('round-end').classList.remove('show');
   $('game-over').classList.remove('show');
+  $('history-ov').classList.remove('show');
+  $('btn-chat').classList.add('hidden');
+  $('chat-panel').classList.add('hidden');
   $('conn-banner').classList.add('hidden');
   online = true;
   $('lobby').style.display = '';
@@ -1896,6 +2104,10 @@ function render() {
   if (!r.players[myId]) { notify('Вы не участвуете в этой игре', true); backToMenu(); return; }
   showGameScreen();
   if (!r.gameState) return;
+  if (!botMode && r.players[myId].bot && !ui.reclaimSent && !busy) {
+    ui.reclaimSent = true;
+    dispatch({ type: 'RECLAIM', by: myId }).then(() => { ui.reclaimSent = false; });
+  }
   renderScoreBar(r);
   renderTrump(r);
   renderZones(r);
@@ -1907,6 +2119,8 @@ function render() {
   notifyTurn(r);
   updateTimer(r);
   renderOverlays(r);
+  if ($('history-ov').classList.contains('show')) fillHistory(r);
+  scheduleBot();
 }
 
 function showWaiting(r) {
@@ -1933,6 +2147,7 @@ function showGameScreen() {
     $('game').style.display = 'block';
   }
   $('btn-forfeit').style.display = room.status === 'playing' ? 'block' : 'none';
+  $('btn-chat').classList.toggle('hidden', botMode || !roomCode);
 }
 
 function renderScoreBar(r) {
@@ -1994,7 +2209,8 @@ function renderZones(r) {
     if (pid === gs.dealer) badges += '<span class="tag-badge">сдаёт</span>';
     if (pid === gs.bidWinner) badges += '<span class="tag-badge taker">играет</span>';
     const partner = r.mode === 'team' && pid !== myId && teamOf(r, pid) === teamOf(r, myId) ? ' 🤝' : '';
-    $('pname-' + z).innerHTML = esc(pid === myId ? playerName(r, pid) + ' (вы)' : playerName(r, pid)) + partner + ' ' + badges;
+    const botMark = r.players[pid]?.bot ? ' 🤖' : '';
+    $('pname-' + z).innerHTML = esc(pid === myId ? playerName(r, pid) + ' (вы)' : playerName(r, pid)) + botMark + partner + ' ' + badges;
     $('nametag-' + z).classList.toggle('active-turn', pid === active);
     $('tricks-' + z).textContent = gs.phase === 'bidding' ? '' : `Взяток: ${gs.tricksTaken[pid] || 0} · очков: ${gs.roundPoints[pid] || 0}`;
     renderZoneCombos(r, pid, z);
@@ -2205,7 +2421,13 @@ function processEvents(r) {
   for (const e of evs) {
     if (e.id <= ui.seen.id) continue;
     ui.seen.id = e.id;
-    if (e.type === 'combo' || e.type === 'bella') showComboBanner(e.text, e.pts);
+    if (e.type === 'combo' || e.type === 'bella') {
+      const who = e.player === myId ? 'Вы' : playerName(r, e.player);
+      queueReveal({
+        title: e.type === 'bella' ? `${who}: Белла!` : `${who} ${e.player === myId ? 'объявляете' : 'объявляет'}`,
+        groups: e.groups || [], ms: REVEAL_MS
+      });
+    } else if (e.type === 'comboResult') queueReveal({ title: e.text, groups: [], ms: 2500 });
     else if (e.type === 'trump') notify(e.text, false, true);
     else notify(e.text);
   }
@@ -2239,11 +2461,13 @@ function fillRoundEnd(r, isOver, gameKey) {
   const gs = r.gameState, rr = gs.roundResult;
   const bt = rr.bidderTeam;
   const btName = shortTeamName(r, bt);
+  const capotNote = rr.capot ? `Капот! ${shortTeamName(r, rr.capot)} взяли все взятки` : '';
   const title = rr.outcome === 'made' ? `${btName} — сыграно!`
     : rr.outcome === 'bait' ? `Байт! ${btName} не набрали`
     : `Равенство — ${rr.rows[bt].total} очков висят`;
   $('re-title').textContent = title;
   const subs = [];
+  if (capotNote) subs.push(capotNote);
   if (rr.hangTo) subs.push(`${shortTeamName(r, rr.hangTo)} забирает висячие +${rr.hangGiven}`);
   if (rr.hangingNow) subs.push(`Висят до следующего раунда: ${rr.hangingNow}`);
   $('re-sub').textContent = subs.join(' · ');
@@ -2336,14 +2560,14 @@ function tickTimer() {
   if (mine && (left === 10 || left === 5) && !timer.beeped[left]) { timer.beeped[left] = true; playBeep(left === 5 ? 1100 : 880, 0.25); }
   // 11б: время вышло у того, чей ход → поражение
   const t = timer;
-  if (mine && left <= 0 && !t.fired) {
+  if (mine && left <= 0 && !t.fired && !room?.players?.[myId]?.bot) {
     t.fired = true;
     dispatch({ type: 'FORFEIT', by: myId, target: myId, reason: 'timeout' }).then(ok => { if (!ok) t.fired = false; });
   }
-  // Соперник не отвечает дольше лимита + запас → он отключился (его клиент не смог засчитать таймаут)
-  if (!mine && !botMode && !isBot(t.pid) && left <= -DISCONNECT_GRACE_S && !t.graceFired) {
+  // Соперник молчит дольше лимита + запас → его клиент отключён: за него играет бот
+  if (!mine && !botMode && room && !isBotCtl(room, t.pid) && left <= -DISCONNECT_GRACE_S && !t.graceFired) {
     t.graceFired = true;
-    dispatch({ type: 'FORFEIT', by: myId, target: t.pid, reason: 'disconnect', turnSeq: t.turnSeq }).then(ok => { if (!ok) t.graceFired = false; });
+    dispatch({ type: 'BOTIFY', by: myId, target: t.pid, turnSeq: t.turnSeq }).then(ok => { if (!ok) t.graceFired = false; });
   }
 }
 function stopTimer() {
@@ -2377,12 +2601,151 @@ function notify(msg, isError = false, big = false) {
   while (c.children.length > 3) c.removeChild(c.firstChild);
   setTimeout(() => el.remove(), 3100);
 }
-function showComboBanner(text, pts) {
-  const el = document.createElement('div');
-  el.className = 'combo-banner';
-  el.innerHTML = `<div class="combo-title">${esc(text)}</div>${pts ? `<div class="combo-pts">+${pts}</div>` : ''}`;
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 2700);
+/* ── Показ комбинаций: по очереди, каждая ≥ 5 секунд, касание — следующая ── */
+const REVEAL_MS = 5500;
+const reveal = { queue: [], timer: null };
+function queueReveal(item) {
+  reveal.queue.push(item);
+  if (!reveal.timer) nextReveal();
+}
+function nextReveal() {
+  clearTimeout(reveal.timer);
+  reveal.timer = null;
+  const box = $('combo-reveal');
+  const it = reveal.queue.shift();
+  if (!it) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="cr-title">${esc(it.title)}</div>`;
+  for (const g of it.groups) {
+    const grp = document.createElement('div');
+    grp.className = 'cr-group';
+    grp.innerHTML = `<div class="cr-name">${esc(g.name)}<b>+${g.pts}</b></div>`;
+    const row = document.createElement('div');
+    row.className = 'cr-cards';
+    (g.cards || []).forEach(c => { const el = makeCardEl(c); el.classList.add('mini'); row.appendChild(el); });
+    grp.appendChild(row);
+    box.appendChild(grp);
+  }
+  if (it.groups.length) box.insertAdjacentHTML('beforeend', '<div class="cr-hint">нажми, чтобы закрыть</div>');
+  const bar = document.createElement('div');
+  bar.className = 'cr-bar';
+  bar.style.animationDuration = it.ms + 'ms';
+  box.appendChild(bar);
+  box.classList.remove('hidden');
+  // перезапуск анимации появления
+  box.style.animation = 'none'; void box.offsetWidth; box.style.animation = '';
+  reveal.timer = setTimeout(nextReveal, it.ms);
+}
+function resetReveal() {
+  reveal.queue = [];
+  clearTimeout(reveal.timer);
+  reveal.timer = null;
+  const box = $('combo-reveal');
+  if (box) { box.classList.add('hidden'); box.innerHTML = ''; }
+}
+
+/* ── Чат и реакции (онлайн). Хранится отдельно: chat/<код>, чтобы не мешать записи хода ── */
+const CHAT_MAX = 60;
+const chat = { seen: new Set(), init: false, unread: 0, lastSend: 0, msgs: [], code: '' };
+function resetChat() {
+  chat.seen.clear(); chat.init = false; chat.unread = 0; chat.msgs = []; chat.code = '';
+  const u = $('chat-unread'); if (u) u.classList.add('hidden');
+  const log = $('chat-log'); if (log) log.innerHTML = '';
+}
+async function pollChatOnce(code, token) {
+  const rd = await dbReadPlain('chat/' + code);
+  if (!rd.ok || token.stopped || code !== roomCode) return;
+  if (chat.code !== code) { resetChat(); chat.code = code; }
+  const list = Object.entries(rd.data || {}).map(([k, m]) => ({ k, ...m }))
+    .filter(m => m && m.t && m.text).sort((a, b) => a.t - b.t);
+  chat.msgs = list.slice(-40);
+  for (const m of list) {
+    if (chat.seen.has(m.k)) continue;
+    chat.seen.add(m.k);
+    if (chat.init) onChatMessage(m);
+  }
+  chat.init = true;
+  renderChatLog();
+}
+function onChatMessage(m) {
+  showBubble(m.by, m.text, m.kind === 'emoji');
+  if (m.by !== myId && $('chat-panel').classList.contains('hidden')) {
+    chat.unread++;
+    const u = $('chat-unread');
+    u.textContent = chat.unread > 9 ? '9+' : chat.unread;
+    u.classList.remove('hidden');
+  }
+}
+function showBubble(pid, text, isEmoji) {
+  if (!room?.players?.[pid] || $('game').style.display !== 'block') return;
+  const zone = $('zone-' + getZoneForPlayer(pid, room));
+  zone.querySelectorAll('.chat-bubble').forEach(b => b.remove());
+  const b = document.createElement('div');
+  b.className = 'chat-bubble' + (isEmoji ? ' emoji' : '');
+  b.textContent = text;
+  zone.appendChild(b);
+  setTimeout(() => b.remove(), 4100);
+}
+function renderChatLog() {
+  const log = $('chat-log');
+  if (!log) return;
+  if (!chat.msgs.length) { log.innerHTML = '<div class="chat-empty">Сообщений пока нет</div>'; return; }
+  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
+  log.innerHTML = chat.msgs.map(m =>
+    `<div class="chat-line${m.by === myId ? ' mine' : ''}"><b>${esc(m.by === myId ? 'Вы' : (m.name || '?'))}:</b> ${esc(m.text)}</div>`).join('');
+  if (atBottom) log.scrollTop = log.scrollHeight;
+}
+async function sendChat(text, kind) {
+  text = String(text || '').trim().slice(0, 80);
+  if (!text || !roomCode || botMode) return;
+  const now = Date.now();
+  if (now - chat.lastSend < 800) { notify('Не так быстро 🙂'); return; }
+  chat.lastSend = now;
+  const msg = { by: myId, name: myName, text, kind: kind || 'text', t: now };
+  showBubble(myId, text, msg.kind === 'emoji');
+  const res = await dbRaw(dbUrl('chat/' + roomCode), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(msg) });
+  if (!res) { notify('Сообщение не отправлено', true); return; }
+  chat.seen.add(res.name);
+  chat.msgs.push({ k: res.name, ...msg });
+  renderChatLog();
+  // держим не больше CHAT_MAX сообщений
+  const all = await dbRaw(`${DB_URL}/chat/${roomCode}.json?shallow=true`);
+  const keys = Object.keys(all || {}).sort();
+  if (keys.length > CHAT_MAX) {
+    const del = Object.fromEntries(keys.slice(0, keys.length - CHAT_MAX).map(k => [k, null]));
+    dbRaw(dbUrl('chat/' + roomCode), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(del) });
+  }
+}
+function toggleChat(open) {
+  const panel = $('chat-panel');
+  const show = open ?? panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !show);
+  if (show) {
+    chat.unread = 0;
+    $('chat-unread').classList.add('hidden');
+    renderChatLog();
+    const log = $('chat-log'); log.scrollTop = log.scrollHeight;
+  }
+}
+
+/* ── История раундов ── */
+function fillHistory(r) {
+  const tks = teamKeys(r);
+  const hist = r.history || [];
+  $('hist-sub').textContent = hist.length ? `Сыграно раундов: ${hist.length}` : 'Ещё не сыграно ни одного раунда';
+  const outName = { made: '✓ сыграл', bait: '✗ байт', hang: '⏸ висят' };
+  let html = `<tr><th>#</th><th>Играл</th>${tks.map(t => `<th>${esc(shortTeamName(r, t))}</th>`).join('')}</tr>`;
+  for (const h of hist) {
+    const who = h.taker === myId ? 'Вы' : playerName(r, h.taker);
+    html += `<tr><td>${h.round}</td><td>${esc(who)} ${h.trump || ''}<div class="hist-out">${outName[h.outcome] || ''}${h.capot ? ' · капот' : ''}</div></td>` +
+      tks.map(t => `<td>+${h.awarded?.[t] ?? 0}</td>`).join('') + '</tr>';
+  }
+  html += `<tr class="hist-total"><td></td><td>Счёт</td>${tks.map(t => `<td>${r.teamScores[t] || 0}</td>`).join('')}</tr>`;
+  $('hist-table').innerHTML = html;
+}
+function openHistory() {
+  if (!room) return;
+  fillHistory(room);
+  $('history-ov').classList.add('show');
 }
 
 let online = true;
@@ -2428,6 +2791,17 @@ function bindEvents() {
   on('btn-play-again', () => dispatch({ type: 'PLAY_AGAIN', by: myId }));
   on('btn-back-lobby', backToMenu);
   on('btn-forfeit', forfeitClick);
+  on('btn-history', openHistory);
+  on('btn-hist-close', () => $('history-ov').classList.remove('show'));
+  on('btn-chat', () => toggleChat());
+  on('chat-close', () => toggleChat(false));
+  on('combo-reveal', nextReveal);
+  $('chat-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const inp = $('chat-input');
+    sendChat(inp.value, 'text');
+    inp.value = '';
+  });
 
   document.addEventListener('click', e => {
     const modeBtn = e.target.closest('[data-mode]');
@@ -2451,6 +2825,10 @@ function bindEvents() {
       chosenTime = timeBtn.dataset.time;
       return;
     }
+    const reactBtn = e.target.closest('[data-react]');
+    if (reactBtn) { sendChat(reactBtn.dataset.react, 'emoji'); return; }
+    const phraseBtn = e.target.closest('[data-phrase]');
+    if (phraseBtn) { sendChat(phraseBtn.dataset.phrase, 'text'); return; }
     const suitBtn = e.target.closest('.suit-btn[data-suit]');
     if (suitBtn) { selectBidSuit(suitBtn); return; }
     // касание мимо карт снимает выбор
