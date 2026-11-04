@@ -1078,6 +1078,8 @@ const LAST_TRICK_MS = 1300;        // сколько показывать соб
 const DISCONNECT_GRACE_S = 20;     // сверх лимита хода — соперник считается отключившимся
 const BOT_DELAY_BID = 900;
 const BOT_DELAY_PLAY = 700;
+const BOT_TAKEOVER_MS = 6000;     // если «главный» клиент молчит — за бота ходит любой другой
+const ROUND_END_WAIT_MS = 20000;   // после «Следующий раунд» ждём остальных не дольше этого
 
 // ==RULES_START==
 /* ═════════════ 2. ПРАВИЛА ИГРЫ ═════════════
@@ -1151,6 +1153,7 @@ function teamOf(room, pid) {
   for (const [k, m] of Object.entries(room.teams || {})) if (m.includes(pid)) return k;
   return null;
 }
+function isBotSeat(room, pid) { return typeof pid === 'string' && (pid.startsWith('bot_') || !!room?.players?.[pid]?.bot); }
 function playerName(room, pid) { return room.players?.[pid]?.name || '?'; }
 function teamLabel(room, tk) { return (room.teams?.[tk] || []).map(id => playerName(room, id)).join(' & '); }
 function buildTeams(seats, mode) {
@@ -1281,6 +1284,7 @@ function normalizeRoom(r) {
   r.teamScores = r.teamScores || {};
   r.hanging = r.hanging || 0;
   r.round = r.round || 0;
+  r.dealNo = r.dealNo || 0;
   r.v = r.v || 0;
   r.winnerTeam = r.winnerTeam || null;
   r.forfeit = r.forfeit || null;
@@ -1306,6 +1310,7 @@ function normalizeRoom(r) {
       c.items = toArr(c.items); c.total = c.total || 0; c.best = c.best || null;
     }
     gs.declared = gs.declared || {};
+    gs.ready = gs.ready || {};
     gs.events = toArr(gs.events).map(e => ({ ...e, groups: toArr(e.groups).map(g => ({ ...g, cards: toArr(g.cards) })) }));
     gs.eventSeq = gs.eventSeq || 0;
     gs.turnSeq = gs.turnSeq || 0;
@@ -1339,6 +1344,7 @@ function dealRound(room) {
   if (n !== 4) give(3);
   seats.forEach(id => { hands[id] = sortHand(hands[id], null); });
   const remainingDeck = deck.slice(p);
+  room.dealNo = (room.dealNo || 0) + 1;   // уникален для каждой раздачи (в т.ч. после «Играть снова»)
   room.gameState = {
     phase: 'bidding', bidRound: 1, obligatory: false,
     hands, remainingDeck, deckSize: remainingDeck.length, extraCards: EXTRA_CARDS,
@@ -1348,7 +1354,7 @@ function dealRound(room) {
     tricksTaken: Object.fromEntries(seats.map(id => [id, 0])),
     roundPoints: Object.fromEntries(seats.map(id => [id, 0])),
     combos: {}, comboTeam: null, combosRevealed: false, declared: {}, bella: null,
-    bids: [], events: [], eventSeq: 0, turnSeq: 0, roundResult: null
+    bids: [], events: [], eventSeq: 0, turnSeq: 0, roundResult: null, ready: {}
   };
 }
 
@@ -1574,7 +1580,16 @@ function reduce(room, a) {
       break;
     }
     case 'LEAVE': {
-      if (!room.players[a.id] || room.status !== 'waiting') return NOOP;
+      const p = room.players[a.id];
+      if (!p) return NOOP;
+      if (room.status === 'gameOver' || room.status === 'abandoned') {
+        // после конца партии место сохраняется (для итогов), но «Играть снова» уже невозможно
+        if (p.left) return NOOP;
+        p.left = true;
+        if (seatOrder(room).every(id => isBotSeat(room, id) || room.players[id].left)) return null;
+        break;
+      }
+      if (room.status !== 'waiting') return NOOP;
       delete room.players[a.id];
       const rest = seatOrder(room);
       if (!rest.length) return null;               // комната пуста — удаляем
@@ -1598,16 +1613,29 @@ function reduce(room, a) {
       dealRound(room);
       break;
     }
-    case 'BID': reduceBid(room, a); break;
-    case 'PLAY': reducePlay(room, a); break;
+    case 'BID':
+    case 'PLAY': {
+      // действие бота, рассчитанное для уже прошедшего хода, просто игнорируем
+      if (a.turnSeq != null && (room.gameState?.turnSeq !== a.turnSeq || room.dealNo !== a.dealNo)) return NOOP;
+      if (a.type === 'BID') reduceBid(room, a); else reducePlay(room, a);
+      break;
+    }
     case 'NEXT_ROUND': {
-      if (room.status !== 'playing' || room.gameState?.phase !== 'roundEnd' || room.round !== a.round) return NOOP;
+      const gs = room.gameState;
+      if (room.status !== 'playing' || gs?.phase !== 'roundEnd' || room.round !== a.round) return NOOP;
+      // следующая раздача — когда все живые игроки нажали «дальше» (или кто-то ждал слишком долго)
+      if (!a.force) {
+        if (gs.ready[a.by]) return NOOP;
+        gs.ready[a.by] = true;
+        if (!seatOrder(room).every(id => isBotSeat(room, id) || gs.ready[id])) break;
+      }
       room.round += 1;
       dealRound(room);
       break;
     }
     case 'PLAY_AGAIN': {
       if (room.status !== 'gameOver' && room.status !== 'abandoned') return NOOP;
+      if (seatOrder(room).some(id => room.players[id].left)) throw new RuleError('Кто-то покинул стол — создайте новую комнату');
       room.teamScores = Object.fromEntries(teamKeys(room).map(k => [k, 0]));
       room.history = [];
       room.hanging = 0;
@@ -1622,7 +1650,8 @@ function reduce(room, a) {
       if (room.status !== 'playing') return NOOP;
       if (a.reason === 'disconnect' &&
           (room.gameState?.currentPlayer !== a.target || room.gameState?.turnSeq !== a.turnSeq)) return NOOP;
-      if (a.reason === 'timeout' && room.gameState?.currentPlayer !== a.target) return NOOP;
+      if (a.reason === 'timeout' && (room.gameState?.currentPlayer !== a.target || room.players[a.target]?.bot ||
+          (a.turnSeq != null && room.gameState?.turnSeq !== a.turnSeq))) return NOOP;
       const loser = teamOf(room, a.target);
       const others = teamKeys(room).filter(t => t !== loser);
       const winner = others.slice().sort((x, y) => (room.teamScores[y] || 0) - (room.teamScores[x] || 0))[0];
@@ -1861,7 +1890,8 @@ async function dispatch(action) {
 /* ── Бот: планировщик ──
    Офлайн — ходит за всех ботов. Онлайн — за отключившихся игроков ходит
    клиент первого «живого» игрока по порядку мест. */
-function isBotCtl(r, pid) { return typeof pid === 'string' && (pid.startsWith('bot_') || !!r?.players?.[pid]?.bot); }
+const isBotCtl = isBotSeat;
+function roundKey(r) { return (r?.dealNo || 0) + ':' + (r?.round || 0); }
 function botRunnerId(r) { return seatOrder(r).find(id => !isBotCtl(r, id)) || null; }
 let botKey = '';
 function cancelBot() { clearTimeout(botTimer); botTimer = null; botKey = ''; }
@@ -1869,8 +1899,9 @@ function scheduleBot() {
   if (!room || room.status !== 'playing') { cancelBot(); return; }
   const gs = room.gameState;
   if (!gs || !isBotCtl(room, gs.currentPlayer) || (gs.phase !== 'bidding' && gs.phase !== 'playing')) { cancelBot(); return; }
-  if (!botMode && botRunnerId(room) !== myId) { cancelBot(); return; }
-  const key = room.round + ':' + gs.turnSeq;
+  // «главный» клиент — первый живой игрок; остальные подстрахуют, если он сам отключился
+  const primary = botMode || botRunnerId(room) === myId;
+  const key = roundKey(room) + ':' + gs.turnSeq;
   if (botTimer && botKey === key) return;
   clearTimeout(botTimer);
   botKey = key;
@@ -1878,13 +1909,16 @@ function scheduleBot() {
   const turn = gs.turnSeq;
   let delay = gs.phase === 'bidding' ? BOT_DELAY_BID : BOT_DELAY_PLAY;
   if (gs.phase === 'playing' && !gs.trickOrder.length && gs.lastTrick) delay += LAST_TRICK_MS;
+  if (!primary) delay += BOT_TAKEOVER_MS;
+  const dealNo = room.dealNo;
   botTimer = setTimeout(() => {
     botTimer = null;
     const g = room?.gameState;
-    if (!g || g.currentPlayer !== pid || g.turnSeq !== turn || !isBotCtl(room, pid)) return;
+    if (!g || room.dealNo !== dealNo || g.currentPlayer !== pid || g.turnSeq !== turn || !isBotCtl(room, pid)) return;
+    const stamp = { by: pid, turnSeq: turn, dealNo };
     const action = g.phase === 'bidding'
-      ? { type: 'BID', by: pid, ...botDecideBid(room, pid) }
-      : { type: 'PLAY', by: pid, card: botChooseCard(room, pid) };
+      ? { type: 'BID', ...stamp, ...botDecideBid(room, pid) }
+      : { type: 'PLAY', ...stamp, card: botChooseCard(room, pid) };
     dispatch(action).then(ok => { if (!ok) { botKey = ''; setTimeout(scheduleBot, 400); } });
   }, delay);
 }
@@ -2022,6 +2056,7 @@ function resetUi() {
   ui.selectedBidSuit = null; ui.bidTurnKey = ''; ui.selectedCardKey = null; ui.seen = null;
   ui.lastTrickKey = ''; ui.lastTrickUntil = 0; ui.playedKeys.clear(); ui.dealKey = '';
   ui.goAck = ''; ui.turnNotifyKey = ''; ui.nextRoundSent = ''; ui.reclaimSent = false;
+  clearTimeout(ui.forceTimer); ui.forceTimer = null; ui.forceKey = '';
   resetReveal();
   resetChat();
 }
@@ -2058,7 +2093,7 @@ async function restoreSession() {
   const rd = await dbReadPlain('rooms/' + savedCode);
   if (!rd.ok) { notify('Нет связи — не удалось вернуться в комнату', true); return; }
   const r = normalizeRoom(rd.data);
-  if (!r || !r.players[savedId] || !['waiting', 'playing', 'gameOver'].includes(r.status)) { clearSession(); return; }
+  if (!r || !r.players[savedId] || r.players[savedId].left || !['waiting', 'playing', 'gameOver'].includes(r.status)) { clearSession(); return; }
   myId = savedId;
   myName = r.players[savedId].name || 'Игрок';
   room = r;
@@ -2156,7 +2191,7 @@ function renderScoreBar(r) {
   const ordered = [mine, ...tks.filter(t => t !== mine)];
   const cell = tk => `<div class="score-team${tk === mine ? ' mine' : ''}">
       <div class="team-label">${esc(shortTeamName(r, tk))}</div>
-      <div class="team-score">${r.teamScores[tk] || 0}</div></div>`;
+      <div class="team-score">${esc(r.teamScores[tk] || 0)}</div></div>`;
   $('score-left').innerHTML = cell(ordered[0]);
   $('score-right').innerHTML = ordered.slice(1).map(cell).join('');
   $('mode-label').textContent = 'до ' + (r.target || 501);
@@ -2192,7 +2227,7 @@ function renderRoundScores(r) {
   const mine = teamOf(r, myId);
   const ordered = [mine, ...tks.filter(t => t !== mine)];
   $('rscore-rows').innerHTML = ordered.map(tk =>
-    `<div class="rscore-row${tk === mine ? ' mine' : ''}"><span class="nm">${esc(shortTeamName(r, tk))}</span><span>${gs.phase === 'bidding' ? '—' : liveTeamPoints(r, tk)}</span></div>`).join('');
+    `<div class="rscore-row${tk === mine ? ' mine' : ''}"><span class="nm">${esc(shortTeamName(r, tk))}</span><span>${gs.phase === 'bidding' ? '—' : esc(liveTeamPoints(r, tk))}</span></div>`).join('');
   $('deck-line').textContent = `колода: ${gs.deckSize || 0}`;
   $('deck-count').textContent = gs.deckSize || 0;
 }
@@ -2229,7 +2264,7 @@ function renderZoneCombos(r, pid, z) {
       let title = '';
       if (!declared) { cls += ' pending'; title = 'Объявится вашей первой картой'; }
       else if (gs.combosRevealed && gs.comboTeam !== teamOf(r, pid)) cls += ' lost';
-      items.forEach(i => parts.push(`<span class="${cls}" title="${title}">${esc(i.name)} +${i.pts}</span>`));
+      items.forEach(i => parts.push(`<span class="${cls}" title="${title}">${esc(i.name)} +${esc(i.pts)}</span>`));
     }
     if (gs.bella?.scored && gs.bella.holder === pid) parts.push(`<span class="zcombo bella">Белла +${BELLA_PTS}</span>`);
     else if (pid === myId && gs.bella && gs.bella.holder === myId && !gs.bella.scored)
@@ -2243,9 +2278,9 @@ function makeCardEl(card) {
   el.className = 'card';
   const color = suitColor(card.suit);
   el.innerHTML =
-    `<div class="card-corner ${color}"><span>${card.rank}</span><span>${card.suit}</span></div>` +
-    `<div class="card-suit-center ${color}">${card.suit}</div>` +
-    `<div class="card-corner bottom ${color}"><span>${card.rank}</span><span>${card.suit}</span></div>`;
+    `<div class="card-corner ${color}"><span>${esc(card.rank)}</span><span>${esc(card.suit)}</span></div>` +
+    `<div class="card-suit-center ${color}">${esc(card.suit)}</div>` +
+    `<div class="card-corner bottom ${color}"><span>${esc(card.rank)}</span><span>${esc(card.suit)}</span></div>`;
   el.setAttribute('aria-label', card.rank + card.suit);
   return el;
 }
@@ -2260,7 +2295,7 @@ function renderHands(r) {
   const seats = seatOrder(r);
   const myTurn = r.status === 'playing' && gs.phase === 'playing' && gs.currentPlayer === myId && !busy;
   const legal = myTurn ? legalCards(gs.hands[myId], gs.trick, gs.trickOrder, gs.trump) : [];
-  const dealKey = r.round + ':' + (gs.phase === 'bidding' ? 'b' : 'p');
+  const dealKey = roundKey(r) + ':' + (gs.phase === 'bidding' ? 'b' : 'p');
   const animate = ui.dealKey !== dealKey;
   ui.dealKey = dealKey;
   if (!myTurn) ui.selectedCardKey = null;
@@ -2314,7 +2349,7 @@ function renderTable(r) {
   ZONES.forEach(z => { const s = $('slot-' + z); s.innerHTML = ''; s.classList.remove('collecting'); });
   let cards = gs.trick, order = gs.trickOrder, winner = null, collecting = false;
   if (!order.length && gs.lastTrick && gs.phase !== 'bidding') {
-    const key = r.round + ':' + gs.lastTrick.no;
+    const key = roundKey(r) + ':' + gs.lastTrick.no;
     if (ui.lastTrickKey !== key) {
       ui.lastTrickKey = key;
       ui.lastTrickUntil = Date.now() + LAST_TRICK_MS;
@@ -2324,7 +2359,7 @@ function renderTable(r) {
       cards = gs.lastTrick.cards; order = gs.lastTrick.order; winner = gs.lastTrick.winner; collecting = true;
     }
   }
-  const trickId = r.round + ':' + (collecting ? gs.lastTrick.no - 1 : gs.trickNo);
+  const trickId = roundKey(r) + ':' + (collecting ? gs.lastTrick.no - 1 : gs.trickNo);
   for (const pid of order) {
     const card = cards[pid];
     if (!card) continue;
@@ -2367,7 +2402,7 @@ function renderBidPanel(r) {
   document.body.classList.add('bidding-open');
   const mine = gs.currentPlayer === myId;
   const fs = gs.openCard.suit;
-  const turnKey = r.round + ':' + gs.turnSeq;
+  const turnKey = roundKey(r) + ':' + gs.turnSeq;
   if (ui.bidTurnKey !== turnKey) { ui.bidTurnKey = turnKey; ui.selectedBidSuit = null; }
 
   $('bid-title').textContent = gs.bidRound === 1 ? 'Торги — 1-й круг' : 'Торги — 2-й круг';
@@ -2382,7 +2417,7 @@ function renderBidPanel(r) {
 
   $('bid-history').innerHTML = gs.bids.map(b => {
     const nm = esc(b.player === myId ? 'Вы' : playerName(r, b.player));
-    return b.type === 'pass' ? `<div class="bid-chip pass">${nm}: пас</div>` : `<div class="bid-chip bid">${nm}: ${b.suit}</div>`;
+    return b.type === 'pass' ? `<div class="bid-chip pass">${nm}: пас</div>` : `<div class="bid-chip bid">${nm}: ${esc(b.suit)}</div>`;
   }).join('');
 
   const r1 = $('bid-round1-btns'), r2 = $('bid-round2-btns');
@@ -2414,10 +2449,10 @@ function processEvents(r) {
   const gs = r.gameState;
   const evs = gs.events || [];
   if (!ui.seen) {           // первое открытие (в т.ч. после обновления) — старое не показываем
-    ui.seen = { round: r.round, id: evs.length ? evs[evs.length - 1].id : 0 };
+    ui.seen = { round: roundKey(r), id: evs.length ? evs[evs.length - 1].id : 0 };
     return;
   }
-  if (ui.seen.round !== r.round) ui.seen = { round: r.round, id: 0 };
+  if (ui.seen.round !== roundKey(r)) ui.seen = { round: roundKey(r), id: 0 };
   for (const e of evs) {
     if (e.id <= ui.seen.id) continue;
     ui.seen.id = e.id;
@@ -2436,7 +2471,7 @@ function processEvents(r) {
 function notifyTurn(r) {
   const gs = r.gameState;
   if (r.status !== 'playing' || gs.currentPlayer !== myId || (gs.phase !== 'bidding' && gs.phase !== 'playing')) return;
-  const key = r.round + ':' + gs.turnSeq;
+  const key = roundKey(r) + ':' + gs.turnSeq;
   if (ui.turnNotifyKey === key) return;
   ui.turnNotifyKey = key;
   if (gs.phase === 'playing') notify('Ваш ход');
@@ -2445,7 +2480,7 @@ function notifyTurn(r) {
 function renderOverlays(r) {
   const gs = r.gameState;
   const rr = gs.roundResult;
-  const gameKey = r.round + ':' + r.status;
+  const gameKey = roundKey(r) + ':' + r.status;
   const trickShowing = Date.now() < ui.lastTrickUntil;
   const isOver = r.status === 'gameOver' || r.status === 'abandoned';
   const showRound = !!rr && gs.phase === 'roundEnd' && !trickShowing && !(isOver && (r.forfeit || ui.goAck === gameKey));
@@ -2480,7 +2515,7 @@ function fillRoundEnd(r, isOver, gameKey) {
     const comb = [row.seq ? row.seq : '', row.bella ? 'б' + row.bella : ''].filter(Boolean).join('+') || '0';
     html += `<tr class="${row.awarded === maxAw && maxAw > 0 ? 'winner' : ''}">
       <td>${esc(shortTeamName(r, tk))}${tk === bt ? ' <span class="taker-mark">★</span>' : ''}</td>
-      <td>${row.cards}</td><td>${comb}</td><td>${row.total}</td><td>+${row.awarded}</td></tr>`;
+      <td>${esc(row.cards)}</td><td>${esc(comb)}</td><td>${esc(row.total)}</td><td>+${esc(row.awarded)}</td></tr>`;
   }
   $('re-table').innerHTML = html;
   const btn = $('btn-next-round');
@@ -2489,14 +2524,29 @@ function fillRoundEnd(r, isOver, gameKey) {
     btn.disabled = false;
     btn.onclick = () => { ui.goAck = gameKey; render(); };
   } else {
-    const sent = ui.nextRoundSent === String(r.round);
-    btn.textContent = sent ? 'Раздаём…' : 'Следующий раунд →';
-    btn.disabled = sent || busy;
+    const rk = roundKey(r);
+    const ready = !!gs.ready[myId];
+    const sending = ui.nextRoundSent === rk;
+    const waiting = seatOrder(r).filter(id => !isBotSeat(r, id) && !gs.ready[id]).map(id => playerName(r, id));
+    btn.textContent = sending && !ready ? 'Отправляем…'
+      : ready ? (waiting.length ? `Ждём: ${waiting.join(', ')}…` : 'Раздаём…')
+      : 'Следующий раунд →';
+    btn.disabled = ready || sending || busy;
     btn.onclick = async () => {
-      ui.nextRoundSent = String(r.round);
+      ui.nextRoundSent = rk;
       const ok = await dispatch({ type: 'NEXT_ROUND', by: myId, round: r.round });
       if (!ok) { ui.nextRoundSent = ''; render(); }
     };
+    // кто-то не жмёт «дальше» — через ROUND_END_WAIT_MS раздаём без него
+    if (ready && !botMode && ui.forceKey !== rk) {
+      ui.forceKey = rk;
+      clearTimeout(ui.forceTimer);
+      ui.forceTimer = setTimeout(() => {
+        if (!room || roundKey(room) !== rk || room.gameState?.phase !== 'roundEnd') return;
+        dispatch({ type: 'NEXT_ROUND', by: myId, round: room.round, force: true })
+          .then(ok => { if (!ok) { ui.forceKey = ''; render(); } });
+      }, ROUND_END_WAIT_MS);
+    }
   }
 }
 
@@ -2520,8 +2570,10 @@ function fillGameOver(r) {
     $('go-sub').textContent = sub;
   }
   $('go-scores').innerHTML = tks.slice().sort((a, b) => (r.teamScores[b] || 0) - (r.teamScores[a] || 0))
-    .map(tk => `<div class="go-row"><span>${esc(shortTeamName(r, tk))}</span><b>${r.teamScores[tk] || 0}</b></div>`).join('');
-  $('btn-play-again').disabled = busy;
+    .map(tk => `<div class="go-row"><span>${esc(shortTeamName(r, tk))}</span><b>${esc(r.teamScores[tk] || 0)}</b></div>`).join('');
+  const gone = tks.flatMap(tk => r.teams[tk] || []).filter(id => r.players[id]?.left && id !== myId);
+  if (gone.length) $('go-sub').textContent += ` · ${gone.map(id => playerName(r, id)).join(', ')} покинул(и) стол`;
+  $('btn-play-again').disabled = busy || gone.length > 0;
 }
 
 /* ═════════════ 8. ТАЙМЕР ХОДА ═════════════ */
@@ -2532,7 +2584,8 @@ function updateTimer(r) {
   const gs = r.gameState;
   const active = r.status === 'playing' && gs && (gs.phase === 'bidding' || gs.phase === 'playing') && gs.currentPlayer;
   if (!active) { stopTimer(); return; }
-  const key = r.round + ':' + gs.turnSeq + ':' + gs.currentPlayer;
+  // флаг бота в ключе: вернувшийся игрок получает полное время, а не мгновенный «таймаут»
+  const key = roundKey(r) + ':' + gs.turnSeq + ':' + gs.currentPlayer + (r.players[gs.currentPlayer]?.bot ? ':bot' : '');
   if (timer.key === key) return;
   stopTimer();
   timer = {
@@ -2562,7 +2615,7 @@ function tickTimer() {
   const t = timer;
   if (mine && left <= 0 && !t.fired && !room?.players?.[myId]?.bot) {
     t.fired = true;
-    dispatch({ type: 'FORFEIT', by: myId, target: myId, reason: 'timeout' }).then(ok => { if (!ok) t.fired = false; });
+    dispatch({ type: 'FORFEIT', by: myId, target: myId, reason: 'timeout', turnSeq: t.turnSeq }).then(ok => { if (!ok) t.fired = false; });
   }
   // Соперник молчит дольше лимита + запас → его клиент отключён: за него играет бот
   if (!mine && !botMode && room && !isBotCtl(room, t.pid) && left <= -DISCONNECT_GRACE_S && !t.graceFired) {
@@ -2618,7 +2671,7 @@ function nextReveal() {
   for (const g of it.groups) {
     const grp = document.createElement('div');
     grp.className = 'cr-group';
-    grp.innerHTML = `<div class="cr-name">${esc(g.name)}<b>+${g.pts}</b></div>`;
+    grp.innerHTML = `<div class="cr-name">${esc(g.name)}<b>+${esc(g.pts)}</b></div>`;
     const row = document.createElement('div');
     row.className = 'cr-cards';
     (g.cards || []).forEach(c => { const el = makeCardEl(c); el.classList.add('mini'); row.appendChild(el); });
@@ -2736,10 +2789,10 @@ function fillHistory(r) {
   let html = `<tr><th>#</th><th>Играл</th>${tks.map(t => `<th>${esc(shortTeamName(r, t))}</th>`).join('')}</tr>`;
   for (const h of hist) {
     const who = h.taker === myId ? 'Вы' : playerName(r, h.taker);
-    html += `<tr><td>${h.round}</td><td>${esc(who)} ${h.trump || ''}<div class="hist-out">${outName[h.outcome] || ''}${h.capot ? ' · капот' : ''}</div></td>` +
-      tks.map(t => `<td>+${h.awarded?.[t] ?? 0}</td>`).join('') + '</tr>';
+    html += `<tr><td>${h.round}</td><td>${esc(who)} ${esc(h.trump || '')}<div class="hist-out">${outName[h.outcome] || ''}${h.capot ? ' · капот' : ''}</div></td>` +
+      tks.map(t => `<td>+${esc(h.awarded?.[t] ?? 0)}</td>`).join('') + '</tr>';
   }
-  html += `<tr class="hist-total"><td></td><td>Счёт</td>${tks.map(t => `<td>${r.teamScores[t] || 0}</td>`).join('')}</tr>`;
+  html += `<tr class="hist-total"><td></td><td>Счёт</td>${tks.map(t => `<td>${esc(r.teamScores[t] || 0)}</td>`).join('')}</tr>`;
   $('hist-table').innerHTML = html;
 }
 function openHistory() {
@@ -2789,7 +2842,7 @@ function bindEvents() {
   on('bid-pass-btn2', bidPass);
   on('bid-confirm-btn', bidConfirm);
   on('btn-play-again', () => dispatch({ type: 'PLAY_AGAIN', by: myId }));
-  on('btn-back-lobby', backToMenu);
+  on('btn-back-lobby', leaveRoom);
   on('btn-forfeit', forfeitClick);
   on('btn-history', openHistory);
   on('btn-hist-close', () => $('history-ov').classList.remove('show'));
