@@ -47,9 +47,9 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    min-height: 100dvh;
+    justify-content: flex-start;
+    height: 100vh;
+    height: 100dvh;
     padding: 16px;
     background: radial-gradient(ellipse at 50% 40%, #1e5c38 0%, #0d2b1a 70%);
     overflow-y: auto;
@@ -62,6 +62,7 @@
     letter-spacing: 4px;
     margin-bottom: 6px;
     animation: fadeDown 0.8s ease;
+    margin-top: auto;
   }
   .logo-sub {
     font-style: italic;
@@ -83,6 +84,8 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
+    margin-bottom: auto;
+    flex-shrink: 0;
   }
   .lobby-card label {
     font-size: 0.8rem;
@@ -125,6 +128,10 @@
     text-align: center;
   }
   .sel-btn.active { background: rgba(201,168,76,0.2); border-color: var(--gold); color: var(--gold-light); }
+  .rule-line { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .rule-line > span { flex: 0 0 104px; font-size: 0.85rem; color: rgba(240,216,128,0.6); line-height: 1.1; }
+  .rule-line .select-row { flex: 1; flex-wrap: nowrap; }
+  .rule-line .sel-btn { min-width: 0; min-height: 38px; padding: 6px 8px; font-size: 0.85rem; }
   .divider { height: 1px; background: rgba(201,168,76,0.15); margin: 4px 0; }
 
   .btn-primary {
@@ -767,7 +774,10 @@
     #zone-left .zone-combos, #zone-right .zone-combos { max-width: 70px; }
     #zone-left .player-name-tag, #zone-right .player-name-tag { max-width: 76px; overflow: hidden; }
 
-    #table-center { width: min(300px, calc(100vw - 92px)); height: 200px; }
+    #table-center { width: max(196px, min(300px, calc(100vw - 176px))); height: 200px; }
+    body[data-seats="2"] #table-center { width: min(300px, calc(100vw - 32px)); }
+    #zone-left, #zone-right { max-width: 80px; }
+    #zone-left .tricks-taken, #zone-right .tricks-taken { white-space: normal; max-width: 76px; line-height: 1.15; }
 
     #bid-panel {
       bottom: 0; left: 0; right: 0;
@@ -852,6 +862,18 @@
         <div class="sel-btn active" data-time="normal">60 сек</div>
         <div class="sel-btn" data-time="fast">30 сек</div>
       </div>
+    </div>
+    <div class="input-group">
+      <label>Правила</label>
+      <div class="rule-line"><span>Первый ход</span><div class="select-row">
+        <div class="sel-btn active" data-rule="firstLead" data-val="taker">Играющий</div>
+        <div class="sel-btn" data-rule="firstLead" data-val="first">Первая рука</div></div></div>
+      <div class="rule-line"><span>Равные комбинации</span><div class="select-row">
+        <div class="sel-btn active" data-rule="comboTie" data-val="none">Сгорают</div>
+        <div class="sel-btn" data-rule="comboTie" data-val="first">Первой руке</div></div></div>
+      <div class="rule-line"><span>5+ карт подряд</span><div class="select-row">
+        <div class="sel-btn active" data-rule="hundred" data-val="0">50</div>
+        <div class="sel-btn" data-rule="hundred" data-val="1">Сотня 100</div></div></div>
     </div>
     <div class="divider"></div>
     <button class="btn-primary" id="btn-create-room">Создать игру (онлайн)</button>
@@ -1076,6 +1098,10 @@ const DB_CONFIGURED = !DB_URL.includes('YOUR_PROJECT');
 const POLL_MS = 1200;              // опрос базы
 const LAST_TRICK_MS = 1300;        // сколько показывать собранную взятку
 const DISCONNECT_GRACE_S = 20;     // сверх лимита хода — соперник считается отключившимся
+const HEARTBEAT_MS = 5000;               // «я на месте» — пишем в presence/<код>/<id>
+const PRESENCE_GAME_STALE_MS = 25000;    // в игре: молчит дольше — за него сразу играет бот
+const PRESENCE_TURN_MIN_S = 10;          // …но не раньше, чем через 10 с его хода
+const PRESENCE_LOBBY_STALE_MS = 60000;   // в комнате ожидания: молчит дольше — место освобождается
 const BOT_DELAY_BID = 900;
 const BOT_DELAY_PLAY = 700;
 const BOT_TAKEOVER_MS = 6000;     // если «главный» клиент молчит — за бота ходит любой другой
@@ -1102,7 +1128,20 @@ const SEQ_ORDER = RANKS;                                   // порядок д�
 const LAST_TRICK_BONUS = 10;
 const BELLA_PTS = 20;
 const TERZ_PTS = 20;      // 3 карты подряд
-const FIFTY_PTS = 50;     // 4 и больше подряд
+const FIFTY_PTS = 50;     // 4 подряд (и больше, если «сотня» выключена)
+const HUNDRED_PTS = 100;  // 5 и больше подряд — если включена «сотня»
+// Варианты правил (выбираются при создании комнаты)
+//   firstLead: 'taker' — первым ходит взявший козырь, 'first' — первая рука (слева от сдающего)
+//   comboTie:  'none'  — равные комбинации сгорают,    'first' — засчитываются первой руке по ходу
+//   hundred:   5+ карт подряд — 100 очков вместо 50
+const DEFAULT_RULES = { firstLead: 'taker', comboTie: 'none', hundred: false };
+function normalizeRules(x) {
+  const r = { ...DEFAULT_RULES, ...(x && typeof x === 'object' ? x : {}) };
+  if (r.firstLead !== 'first') r.firstLead = 'taker';
+  if (r.comboTie !== 'first') r.comboTie = 'none';
+  r.hundred = !!r.hundred;
+  return r;
+}
 const CAPOT_PTS = 250;    // капот: все взятки у одной стороны — 250 вместо очков за карты
 const EXTRA_CARDS = 3;    // добор после торгов (играющий: фреза + 2)
 const MODE_PLAYERS = { solo: 2, trio: 3, team: 4 };
@@ -1231,39 +1270,53 @@ function findSequences(hand) {
   }
   return res;
 }
-function seqPts(len) { return len >= 4 ? FIFTY_PTS : TERZ_PTS; }
+function seqPts(len, rules) { return len >= 5 && rules?.hundred ? HUNDRED_PTS : len >= 4 ? FIFTY_PTS : TERZ_PTS; }
 function seqCards(s) { return SEQ_ORDER.slice(s.top - s.len + 1, s.top + 1).map(rank => ({ suit: s.suit, rank })); }
-function seqName(s) { return (s.len >= 4 ? 'Полтинник' : 'Терц') + ' ' + s.suit + ' до ' + RANK_GEN[SEQ_ORDER[s.top]]; }
+function seqName(s, rules) {
+  const kind = s.len >= 5 && rules?.hundred ? 'Сотня' : s.len >= 4 ? 'Полтинник' : 'Терц';
+  return kind + ' ' + s.suit + ' до ' + RANK_GEN[SEQ_ORDER[s.top]];
+}
+// Порядок хода, начиная с указанного игрока
+function playOrderFrom(room, first) {
+  const s = seatOrder(room), i = Math.max(0, s.indexOf(first));
+  return s.slice(i).concat(s.slice(0, i));
+}
 // >0 если a старше b: длиннее → выше старшая карта → козырная
 function compareSeq(a, b, trump) {
   if (a.len !== b.len) return a.len - b.len;
   if (a.top !== b.top) return a.top - b.top;
   return (a.suit === trump ? 1 : 0) - (b.suit === trump ? 1 : 0);
 }
-function calcCombos(room, hands, trump) {
+function calcCombos(room, hands, trump, leadOrder) {
+  const rules = room.rules || DEFAULT_RULES;
+  const pos = id => { const i = (leadOrder || []).indexOf(id); return i < 0 ? 99 : i; };
   const combos = {};
   for (const [pid, hand] of Object.entries(hands)) {
     const seqs = findSequences(hand);
     let best = null;
     for (const s of seqs) if (!best || compareSeq(s, best, trump) > 0) best = s;
     combos[pid] = {
-      items: seqs.map(s => ({ name: seqName(s), pts: seqPts(s.len), suit: s.suit, len: s.len, top: s.top })),
-      total: seqs.reduce((t, s) => t + seqPts(s.len), 0),
+      items: seqs.map(s => ({ name: seqName(s, rules), pts: seqPts(s.len, rules), suit: s.suit, len: s.len, top: s.top })),
+      total: seqs.reduce((t, s) => t + seqPts(s.len, rules), 0),
       best
     };
   }
-  // Очки за последовательности получает только сторона со старшей комбинацией
-  let bestTeam = null, bestSeq = null, tie = false;
+  // Очки за последовательности получает только сторона со старшей комбинацией.
+  // При полном равенстве — либо никто, либо (comboTie='first') тот, кто раньше ходит в первой взятке.
+  let bestTeam = null, bestSeq = null, bestPos = 99, tie = false;
   for (const tk of teamKeys(room)) {
-    let tb = null;
+    let tb = null, tp = 99;
     for (const pid of room.teams[tk]) {
       const b = combos[pid]?.best;
-      if (b && (!tb || compareSeq(b, tb, trump) > 0)) tb = b;
+      if (!b) continue;
+      const c = tb ? compareSeq(b, tb, trump) : 1;
+      if (c > 0 || (c === 0 && pos(pid) < tp)) { tb = b; tp = pos(pid); }
     }
     if (!tb) continue;
-    if (!bestSeq) { bestSeq = tb; bestTeam = tk; tie = false; continue; }
-    const c = compareSeq(tb, bestSeq, trump);
-    if (c > 0) { bestSeq = tb; bestTeam = tk; tie = false; }
+    if (!bestSeq) { bestSeq = tb; bestPos = tp; bestTeam = tk; tie = false; continue; }
+    let c = compareSeq(tb, bestSeq, trump);
+    if (c === 0 && rules.comboTie === 'first') c = bestPos - tp;
+    if (c > 0) { bestSeq = tb; bestPos = tp; bestTeam = tk; tie = false; }
     else if (c === 0) tie = true;
   }
   return { combos, comboTeam: tie ? null : bestTeam };
@@ -1289,6 +1342,7 @@ function normalizeRoom(r) {
   r.winnerTeam = r.winnerTeam || null;
   r.forfeit = r.forfeit || null;
   r.history = toArr(r.history);
+  r.rules = normalizeRules(r.rules);
   const gs = r.gameState;
   if (gs) {
     const ids = Object.keys(r.players);
@@ -1386,14 +1440,15 @@ function confirmTrump(room, taker, suit) {
   gs.deckSize = gs.remainingDeck.length;
   seats.forEach(id => { gs.hands[id] = sortHand(gs.hands[id], suit); });
 
-  const { combos, comboTeam } = calcCombos(room, gs.hands, suit);
+  const leader = room.rules?.firstLead === 'first' ? gs.firstBidder : taker;
+  const { combos, comboTeam } = calcCombos(room, gs.hands, suit, playOrderFrom(room, leader));
   const bellaHolder = seats.find(id =>
     gs.hands[id].some(c => c.suit === suit && c.rank === 'K') &&
     gs.hands[id].some(c => c.suit === suit && c.rank === 'Q'));
 
   Object.assign(gs, {
     trump: suit, phase: 'playing', obligatory: false,
-    bidWinner: taker, currentPlayer: taker, trickLeader: taker,
+    bidWinner: taker, currentPlayer: leader, trickLeader: leader,
     frezaCard: originalFreza, openCard: null,
     combos, comboTeam, combosRevealed: false, declared: {},
     bella: bellaHolder ? { holder: bellaHolder, played: 0, scored: false } : null,
@@ -1796,26 +1851,118 @@ async function dbRaw(url, opts) {
 }
 
 let listenToken = null;
+
+// Применить событие потока Firebase (put/patch по пути) к локальной копии дерева
+function applyAt(tree, path, data, patch) {
+  const parts = String(path || '/').split('/').filter(Boolean);
+  const merge = (node, obj) => {
+    node = node && typeof node === 'object' ? node : {};
+    for (const [k, v] of Object.entries(obj || {})) { if (v === null) delete node[k]; else node[k] = v; }
+    return node;
+  };
+  if (!parts.length) return patch ? merge(tree, data) : (data ?? null);
+  const root = tree && typeof tree === 'object' ? tree : {};
+  let node = root;
+  for (const p of parts.slice(0, -1)) {
+    if (!node[p] || typeof node[p] !== 'object') node[p] = {};
+    node = node[p];
+  }
+  const last = parts[parts.length - 1];
+  if (patch) node[last] = merge(node[last], data);
+  else if (data === null) delete node[last];
+  else node[last] = data;
+  return root;
+}
+
+/* Подписка на путь: поток событий (EventSource), а если он недоступен — опрос.
+   onValue получает актуальное значение пути (не изменять!). */
+function subscribe(path, onValue, token, opts = {}) {
+  const report = opts.report ? v => setOnline(v) : () => {};
+  const poll = async () => {
+    while (!token.stopped) {
+      const rd = await dbReadPlain(path);
+      if (token.stopped) break;
+      if (rd.ok) { report(true); onValue(rd.data); } else report(false);
+      await sleep(opts.pollMs || POLL_MS);
+    }
+  };
+  if (typeof EventSource === 'undefined') { poll(); return; }
+  let es, tree = null;
+  try { es = new EventSource(dbUrl(path)); } catch (e) { poll(); return; }
+  token.streams.push(es);
+  const handle = (ev, patch) => {
+    if (token.stopped) return;
+    let m;
+    try { m = JSON.parse(ev.data); } catch (e) { return; }
+    if (!m || typeof m !== 'object') return;
+    tree = applyAt(tree, m.path, m.data, patch);
+    report(true);
+    onValue(tree);
+  };
+  const fallback = () => { es.close(); if (!token.stopped) poll(); };
+  es.addEventListener('put', e => handle(e, false));
+  es.addEventListener('patch', e => handle(e, true));
+  es.addEventListener('cancel', fallback);        // правила базы запретили чтение
+  es.addEventListener('auth_revoked', fallback);
+  es.onerror = () => {
+    if (token.stopped) return;
+    if (es.readyState === 2) fallback();          // поток закрыт насовсем (CORS/ошибка) — опрашиваем
+    else report(false);                           // временный обрыв — EventSource переподключится сам
+  };
+}
+
 function listenRoom(code) {
   stopListening();
-  const token = { stopped: false, lastJson: null };
+  const token = { stopped: false, lastJson: null, streams: [], presence: {}, startedAt: Date.now(), timers: [] };
   listenToken = token;
-  (async () => {
-    let iter = 0;
-    while (!token.stopped) {
-      if (iter++ % 2 === 0) pollChatOnce(code, token);
-      const rd = await dbReadPlain('rooms/' + code);
-      if (token.stopped) break;
-      if (rd.ok) {
-        setOnline(true);
-        const json = JSON.stringify(rd.data);
-        if (json !== token.lastJson) { token.lastJson = json; onRemoteRoom(normalizeRoom(rd.data)); }
-      } else setOnline(false);
-      await sleep(POLL_MS);
-    }
-  })();
+  subscribe('rooms/' + code, data => {
+    const json = JSON.stringify(data ?? null);
+    if (json === token.lastJson) return;
+    token.lastJson = json;
+    onRemoteRoom(normalizeRoom(clone(data)));
+  }, token, { report: true });
+  subscribe('chat/' + code, data => onChatData(code, data, token), token, { pollMs: POLL_MS * 2 });
+  subscribe('presence/' + code, data => onPresenceData(data, token), token, { pollMs: HEARTBEAT_MS });
+  // Сердцебиение: серверное время, чтобы значение менялось при каждой записи
+  const beat = () => { if (!token.stopped && myId) dbWrite(`presence/${code}/${myId}`, { '.sv': 'timestamp' }); };
+  beat();
+  token.timers.push(setInterval(beat, HEARTBEAT_MS));
+  token.timers.push(setInterval(checkPresence, 3000));
 }
-function stopListening() { if (listenToken) { listenToken.stopped = true; listenToken = null; } }
+
+// Присутствие: замечаем, когда значение игрока меняется (по своим часам — без расхождения часов)
+function onPresenceData(data, token) {
+  if (token.stopped) return;
+  const now = Date.now();
+  for (const [pid, v] of Object.entries(data || {})) {
+    const prev = token.presence[pid];
+    if (!prev || prev.v !== v) token.presence[pid] = { v, at: now };
+  }
+}
+function isStale(pid, ms) {
+  const t = listenToken;
+  if (!t || pid === myId) return false;
+  const seen = t.presence[pid]?.at ?? t.startedAt;
+  return Date.now() - seen > ms;
+}
+// Комната ожидания: молчащих игроков (в т.ч. создателя) убираем — место и роль хоста переходят дальше
+function checkPresence() {
+  if (botMode || !room || room.status !== 'waiting' || busy || !room.players[myId]) return;
+  const stale = seatOrder(room).find(id => id !== myId && isStale(id, PRESENCE_LOBBY_STALE_MS));
+  if (stale) {
+    const name = playerName(room, stale);
+    dispatch({ type: 'LEAVE', id: stale }).then(ok => { if (ok) notify(`${name} не на связи — место освобождено`); });
+    dbWrite(`presence/${roomCode}/${stale}`, null);
+  }
+}
+function stopListening() {
+  const t = listenToken;
+  if (!t) return;
+  t.stopped = true;
+  t.streams.forEach(es => es.close());
+  t.timers.forEach(clearInterval);
+  listenToken = null;
+}
 
 /* ═════════════ 5. СОСТОЯНИЕ КЛИЕНТА ═════════════ */
 let myId = null;
@@ -1829,6 +1976,7 @@ let botTimer = null;
 let chosenMode = 'solo';
 let chosenPts = 501;
 let chosenTime = 'normal';
+const chosenRules = { ...DEFAULT_RULES };
 
 // UI-состояние (не влияет на игру)
 const ui = {
@@ -1958,7 +2106,7 @@ async function createRoom() {
     if (!code) { notify('Не удалось подобрать код, попробуйте ещё раз', true); return; }
     cleanupOldRooms();
     const newRoom = {
-      mode: chosenMode, target: chosenPts, timeLimit: chosenTime,
+      mode: chosenMode, target: chosenPts, timeLimit: chosenTime, rules: { ...chosenRules },
       maxPlayers: MODE_PLAYERS[chosenMode], status: 'waiting', host: myId,
       players: { [myId]: { name: myName, order: 0 } },
       round: 0, hanging: 0, createdAt: Date.now(), updatedAt: Date.now(), v: 1
@@ -2000,14 +2148,16 @@ function enterRoom(code) {
 async function leaveRoom() {
   if (roomCode && myId) {
     try {
-      const res = await transact('rooms/' + roomCode, r => reduce(r, { type: 'LEAVE', id: myId }));
-      if (res === null) dbWrite('chat/' + roomCode, null);
+      const code = roomCode;
+      const res = await transact('rooms/' + code, r => reduce(r, { type: 'LEAVE', id: myId }));
+      if (res === null) { dbWrite('chat/' + code, null); dbWrite('presence/' + code, null); }
+      else dbWrite(`presence/${code}/${myId}`, null);
     } catch (e) { /* выходим всё равно */ }
   }
   backToMenu();
 }
 
-// Удаляем комнаты без активности дольше ROOM_TTL и осиротевшие чаты (по 40 за раз)
+// Удаляем комнаты без активности дольше ROOM_TTL и осиротевшие чаты/присутствие (по 40 за раз)
 const ROOM_TTL_MS = 12 * 3600 * 1000;
 async function cleanupOldRooms() {
   try {
@@ -2020,11 +2170,14 @@ async function cleanupOldRooms() {
       if (now - ts > ROOM_TTL_MS) {
         await dbWrite('rooms/' + code, null);
         await dbWrite('chat/' + code, null);
+        await dbWrite('presence/' + code, null);
         delete rooms[code];
       }
     }
     const chats = await dbRaw(`${DB_URL}/chat.json?shallow=true`) || {};
     for (const code of Object.keys(chats).filter(c => !rooms[c]).slice(0, 40)) await dbWrite('chat/' + code, null);
+    const pres = await dbRaw(`${DB_URL}/presence.json?shallow=true`) || {};
+    for (const code of Object.keys(pres).filter(c => !rooms[c]).slice(0, 40)) await dbWrite('presence/' + code, null);
   } catch (e) { /* уборка — не критично */ }
 }
 
@@ -2043,7 +2196,7 @@ function startBotGame() {
   const players = { [myId]: { name: myName, order: 0 } };
   for (let i = 1; i < n; i++) players['bot_' + i] = { name: n === 2 ? '🤖 Бот' : '🤖 Бот ' + i, order: i };
   let r = normalizeRoom({
-    mode: chosenMode, target: chosenPts, timeLimit: chosenTime, maxPlayers: n,
+    mode: chosenMode, target: chosenPts, timeLimit: chosenTime, rules: { ...chosenRules }, maxPlayers: n,
     status: 'waiting', host: myId, players, round: 0, hanging: 0, v: 0
   });
   room = reduce(r, { type: 'START', by: myId });
@@ -2135,9 +2288,13 @@ function shortTeamName(r, tk) {
 function render() {
   const r = room;
   if (!r) return;
-  if (r.status === 'waiting') { showWaiting(r); return; }
+  if (r.status === 'waiting') {
+    if (!r.players[myId] && !botMode) { notify('Вы вышли из комнаты (не было связи)', true); backToMenu(); return; }
+    showWaiting(r); return;
+  }
   if (!r.players[myId]) { notify('Вы не участвуете в этой игре', true); backToMenu(); return; }
   showGameScreen();
+  document.body.dataset.seats = seatOrder(r).length;
   if (!r.gameState) return;
   if (!botMode && r.players[myId].bot && !ui.reclaimSent && !busy) {
     ui.reclaimSent = true;
@@ -2167,7 +2324,7 @@ function showWaiting(r) {
   $('waiting-players-list').innerHTML = seats.map(id =>
     `<div class="player-chip"><div class="dot"></div>${esc(playerName(r, id))}${id === r.host ? ' 👑' : ''}${id === myId ? ' (вы)' : ''}</div>`).join('');
   const modeName = { solo: '1×1', trio: '1×1×1', team: '2×2' }[r.mode] || r.mode;
-  $('waiting-mode').textContent = `${modeName} · до ${r.target} · ${r.timeLimit === 'fast' ? 30 : 60} сек на ход`;
+  $('waiting-mode').textContent = `${modeName} · до ${r.target} · ${r.timeLimit === 'fast' ? 30 : 60} сек на ход · ${rulesSummary(r.rules)}`;
   const needed = r.maxPlayers - seats.length;
   const isHost = r.host === myId;
   $('waiting-info').textContent = needed > 0
@@ -2176,6 +2333,12 @@ function showWaiting(r) {
   $('start-btn').classList.toggle('hidden', !(needed <= 0 && isHost));
 }
 
+function rulesSummary(rules) {
+  const x = normalizeRules(rules);
+  return [x.firstLead === 'first' ? 'ходит первая рука' : 'ходит играющий',
+    x.comboTie === 'first' ? 'равные комб. — первой руке' : 'равные комб. сгорают',
+    x.hundred ? 'сотня 100' : 'без сотни'].join(' · ');
+}
 function showGameScreen() {
   if ($('game').style.display !== 'block') {
     $('lobby').style.display = 'none';
@@ -2247,7 +2410,10 @@ function renderZones(r) {
     const botMark = r.players[pid]?.bot ? ' 🤖' : '';
     $('pname-' + z).innerHTML = esc(pid === myId ? playerName(r, pid) + ' (вы)' : playerName(r, pid)) + botMark + partner + ' ' + badges;
     $('nametag-' + z).classList.toggle('active-turn', pid === active);
-    $('tricks-' + z).textContent = gs.phase === 'bidding' ? '' : `Взяток: ${gs.tricksTaken[pid] || 0} · очков: ${gs.roundPoints[pid] || 0}`;
+    const narrow = window.innerWidth <= 600 && (z === 'left' || z === 'right');
+    $('tricks-' + z).textContent = gs.phase === 'bidding' ? ''
+      : narrow ? `взяток ${gs.tricksTaken[pid] || 0} · ${gs.roundPoints[pid] || 0} оч.`
+      : `Взяток: ${gs.tricksTaken[pid] || 0} · очков: ${gs.roundPoints[pid] || 0}`;
     renderZoneCombos(r, pid, z);
   }
 }
@@ -2613,12 +2779,24 @@ function tickTimer() {
   if (mine && (left === 10 || left === 5) && !timer.beeped[left]) { timer.beeped[left] = true; playBeep(left === 5 ? 1100 : 880, 0.25); }
   // 11б: время вышло у того, чей ход → поражение
   const t = timer;
+  if (mine && left <= 0 && !t.fired && !room?.players?.[myId]?.bot && botMode) {
+    // офлайн: не наказываем поражением — ход делается автоматически
+    t.fired = true;
+    const g = room.gameState;
+    const stamp = { by: myId, turnSeq: t.turnSeq, dealNo: room.dealNo };
+    const action = g.phase === 'bidding'
+      ? { type: 'BID', ...stamp, ...botDecideBid(room, myId) }
+      : { type: 'PLAY', ...stamp, card: botChooseCard(room, myId) };
+    notify('Время вышло — ход сделан за вас');
+    dispatch(action).then(ok => { if (!ok) t.fired = false; });
+  }
   if (mine && left <= 0 && !t.fired && !room?.players?.[myId]?.bot) {
     t.fired = true;
     dispatch({ type: 'FORFEIT', by: myId, target: myId, reason: 'timeout', turnSeq: t.turnSeq }).then(ok => { if (!ok) t.fired = false; });
   }
   // Соперник молчит дольше лимита + запас → его клиент отключён: за него играет бот
-  if (!mine && !botMode && room && !isBotCtl(room, t.pid) && left <= -DISCONNECT_GRACE_S && !t.graceFired) {
+  const gone = elapsed > PRESENCE_TURN_MIN_S && isStale(t.pid, PRESENCE_GAME_STALE_MS);
+  if (!mine && !botMode && room && !isBotCtl(room, t.pid) && (left <= -DISCONNECT_GRACE_S || gone) && !t.graceFired) {
     t.graceFired = true;
     dispatch({ type: 'BOTIFY', by: myId, target: t.pid, turnSeq: t.turnSeq }).then(ok => { if (!ok) t.graceFired = false; });
   }
@@ -2704,11 +2882,10 @@ function resetChat() {
   const u = $('chat-unread'); if (u) u.classList.add('hidden');
   const log = $('chat-log'); if (log) log.innerHTML = '';
 }
-async function pollChatOnce(code, token) {
-  const rd = await dbReadPlain('chat/' + code);
-  if (!rd.ok || token.stopped || code !== roomCode) return;
+function onChatData(code, data, token) {
+  if (token.stopped || code !== roomCode) return;
   if (chat.code !== code) { resetChat(); chat.code = code; }
-  const list = Object.entries(rd.data || {}).map(([k, m]) => ({ k, ...m }))
+  const list = Object.entries(data && typeof data === 'object' ? data : {}).map(([k, m]) => ({ k, ...m }))
     .filter(m => m && m.t && m.text).sort((a, b) => a.t - b.t);
   chat.msgs = list.slice(-40);
   for (const m of list) {
@@ -2784,7 +2961,7 @@ function toggleChat(open) {
 function fillHistory(r) {
   const tks = teamKeys(r);
   const hist = r.history || [];
-  $('hist-sub').textContent = hist.length ? `Сыграно раундов: ${hist.length}` : 'Ещё не сыграно ни одного раунда';
+  $('hist-sub').textContent = (hist.length ? `Сыграно раундов: ${hist.length}` : 'Ещё не сыграно ни одного раунда') + ' · ' + rulesSummary(r.rules);
   const outName = { made: '✓ сыграл', bait: '✗ байт', hang: '⏸ висят' };
   let html = `<tr><th>#</th><th>Играл</th>${tks.map(t => `<th>${esc(shortTeamName(r, t))}</th>`).join('')}</tr>`;
   for (const h of hist) {
@@ -2876,6 +3053,14 @@ function bindEvents() {
       document.querySelectorAll('[data-time]').forEach(b => b.classList.remove('active'));
       timeBtn.classList.add('active');
       chosenTime = timeBtn.dataset.time;
+      return;
+    }
+    const ruleBtn = e.target.closest('[data-rule]');
+    if (ruleBtn) {
+      const k = ruleBtn.dataset.rule;
+      document.querySelectorAll(`[data-rule="${k}"]`).forEach(b => b.classList.remove('active'));
+      ruleBtn.classList.add('active');
+      chosenRules[k] = k === 'hundred' ? ruleBtn.dataset.val === '1' : ruleBtn.dataset.val;
       return;
     }
     const reactBtn = e.target.closest('[data-react]');
