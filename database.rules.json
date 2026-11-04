@@ -1,0 +1,65 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "rooms": {
+      ".read": true,
+      "$code": {
+        ".write": true,
+        ".validate": "$code.length >= 4 && $code.length <= 6 && $code.matches(/^[A-Z2-9]+$/) && newData.hasChildren(['mode', 'status', 'maxPlayers', 'host', 'players'])",
+        "mode":       { ".validate": "newData.isString() && newData.val().matches(/^(solo|trio|team)$/)" },
+        "status":     { ".validate": "newData.isString() && newData.val().matches(/^(waiting|playing|gameOver|abandoned)$/)" },
+        "maxPlayers": { ".validate": "newData.isNumber() && newData.val() >= 2 && newData.val() <= 4" },
+        "target":     { ".validate": "newData.val() === 501 || newData.val() === 1001" },
+        "timeLimit":  { ".validate": "newData.val() === 'normal' || newData.val() === 'fast'" },
+        "host":       { ".validate": "newData.isString() && newData.val().length <= 40" },
+        "v":          { ".validate": "newData.isNumber()" },
+        "createdAt":  { ".validate": "newData.isNumber()" },
+        "updatedAt":  { ".validate": "newData.isNumber()" },
+        "rules": {
+          "firstLead": { ".validate": "newData.val() === 'taker' || newData.val() === 'first'" },
+          "comboTie":  { ".validate": "newData.val() === 'none' || newData.val() === 'first'" },
+          "hundred":   { ".validate": "newData.isBoolean()" },
+          "$other":    { ".validate": false }
+        },
+        "players": {
+          "$pid": {
+            ".validate": "$pid.length <= 40 && newData.hasChildren(['name'])",
+            "name":  { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 24" },
+            "order": { ".validate": "newData.isNumber()" },
+            "bot":   { ".validate": "newData.isBoolean()" },
+            "left":  { ".validate": "newData.isBoolean()" },
+            "$other": { ".validate": false }
+          }
+        }
+      }
+    },
+
+    "chat": {
+      ".read": true,
+      "$code": {
+        ".write": true,
+        ".validate": "$code.length >= 4 && $code.length <= 6 && $code.matches(/^[A-Z2-9]+$/)",
+        "$msg": {
+          ".validate": "newData.hasChildren(['by', 'text', 't'])",
+          "by":   { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "name": { ".validate": "newData.isString() && newData.val().length <= 24" },
+          "text": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 80" },
+          "kind": { ".validate": "newData.val() === 'text' || newData.val() === 'emoji'" },
+          "t":    { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        }
+      }
+    },
+
+    "presence": {
+      ".read": true,
+      "$code": {
+        ".write": true,
+        ".validate": "$code.length >= 4 && $code.length <= 6 && $code.matches(/^[A-Z2-9]+$/)",
+        "$pid": { ".validate": "$pid.length <= 40 && newData.isNumber()" }
+      }
+    }
+  }
+}
